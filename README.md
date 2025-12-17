@@ -46,9 +46,20 @@ uv run pytest -m "not e2e" --cov=src/itmux --cov-report=term-missing
 実際のiTerm2とtmux環境を使用した統合テストを実行します。
 
 **前提条件:**
-- iTerm2 Python API が有効になっていること
-- iTerm2が実行中であること
-- tmuxがインストールされていること
+
+1. **iTerm2 Python APIを有効化**
+   - iTerm2 > Settings > General > Magic
+   - "Enable Python API" にチェックを入れる
+   - 初回接続時にセキュリティ確認ダイアログが表示される場合があります
+
+2. **iTerm2が実行中であること**
+
+3. **tmuxがインストールされていること**
+   ```bash
+   brew install tmux
+   ```
+
+**実行方法:**
 
 ```bash
 # E2Eテストのみ実行
@@ -59,6 +70,19 @@ uv run pytest tests/ -v
 ```
 
 **注意:** E2Eテストは実環境を必要とするため、環境が整っていない場合は自動的にスキップされます。CI環境では実行されません。
+
+**トラブルシューティング:**
+
+テストがスキップされる場合：
+```bash
+# 詳細なスキップ理由を確認
+uv run pytest tests/e2e/ -vv
+```
+
+一般的な問題：
+- `iTerm2 Python API is not enabled`: Settings > General > Magic で API を有効化してください
+- `tmux is not installed`: `brew install tmux` でインストールしてください
+- `iterm2 module is not available`: `uv sync` で依存関係を再インストールしてください
 
 ## ドキュメント
 

@@ -27,10 +27,24 @@ def check_environment():
     if result.returncode != 0:
         pytest.skip("tmux is not installed")
 
-    # iTerm2が起動しているか確認（簡易チェック）
-    # 実際にはiterm2モジュールのインポートで確認
+    # iTerm2 Python APIが有効かチェック
     try:
         import iterm2
+        import asyncio
+
+        async def check_api():
+            try:
+                connection = await iterm2.Connection.async_create()
+                await connection.async_close()
+                return True
+            except Exception as e:
+                return False
+
+        if not asyncio.run(check_api()):
+            pytest.skip(
+                "iTerm2 Python API is not enabled or not accessible. "
+                "Enable it in iTerm2 > Settings > General > Magic > Enable Python API"
+            )
     except ImportError:
         pytest.skip("iterm2 module is not available")
 
