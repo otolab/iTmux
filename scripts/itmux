@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# itmux: iTerm2 + tmux orchestration tool
+# uvプロジェクトとして実行するシェルスクリプト
+
+# スクリプトの場所を取得（シンボリックリンク対応）
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOSの場合、greadlinkが必要（brew install coreutils）
+    # ない場合はreadonlyにフォールバック
+    if command -v greadlink &> /dev/null; then
+        SCRIPT_PATH="$(greadlink -f "$0")"
+    else
+        SCRIPT_PATH="$0"
+        # シンボリックリンクを解決
+        while [ -L "$SCRIPT_PATH" ]; do
+            DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+            SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+            [[ $SCRIPT_PATH != /* ]] && SCRIPT_PATH="$DIR/$SCRIPT_PATH"
+        done
+    fi
+else
+    SCRIPT_PATH="$(readlink -f "$0")"
+fi
+
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# uvを使ってPythonプロジェクトを実行
+exec uv --project "$PROJECT_ROOT" run itmux "$@"
