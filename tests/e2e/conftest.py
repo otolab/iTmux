@@ -35,7 +35,7 @@ def check_environment():
         async def check_api():
             try:
                 connection = await iterm2.Connection.async_create()
-                await connection.async_close()
+                # 接続できればOK（Connectionオブジェクトにcloseメソッドはない）
                 return True
             except Exception as e:
                 return False
@@ -110,12 +110,9 @@ def cli_runner(temp_config_file, cleanup_tmux_sessions, monkeypatch):
     from click.testing import CliRunner
     from itmux.cli import main
 
-    # 設定ファイルのパスを環境変数で上書き
-    monkeypatch.setenv("ITMUX_CONFIG_PATH", str(temp_config_file))
-
-    # また、config.pyのDEFAULT_CONFIG_PATHをパッチ
-    import itmux.config
-    monkeypatch.setattr(itmux.config, "DEFAULT_CONFIG_PATH", temp_config_file)
+    # cli.pyでインポートされたDEFAULT_CONFIG_PATHをパッチ
+    import itmux.cli
+    monkeypatch.setattr(itmux.cli, "DEFAULT_CONFIG_PATH", temp_config_file)
 
     runner = CliRunner()
 
