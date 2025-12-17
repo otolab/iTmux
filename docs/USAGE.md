@@ -131,18 +131,27 @@ itmux open my-project
 
 ```bash
 itmux close my-project
+# または、環境変数を使って省略形
+itmux close
 ```
 
 **動作**:
 1. `my-project`に属する全ウィンドウを検索
-2. 各ウィンドウをデタッチ
-3. iTerm2のウィンドウは閉じる
-4. tmuxセッションはバックグラウンドで継続
+2. **現在の状態を自動保存**（ウィンドウサイズ、セッションリスト）
+3. 各ウィンドウをデタッチ
+4. iTerm2のウィンドウは閉じる
+5. tmuxセッションはバックグラウンドで継続
+6. 環境変数 `ITMUX_PROJECT` をクリア
 
 **重要**: プロセスは停止しません
 - nvimで編集中のファイルはそのまま
 - `npm run dev`は動き続ける
 - `tail -f`も継続中
+
+**自動同期**: close時に現在の状態が `config.json` に保存されます
+- 追加したセッションも自動的に保存
+- ウィンドウサイズの変更も反映
+- 次回 `open` 時に同じ状態で復元
 
 ### 4. プロジェクト一覧
 
@@ -161,6 +170,71 @@ Projects:
   side-project (1 session, closed)
     - side_main
 ```
+
+### 5. セッションを追加する
+
+プロジェクトに新しいtmuxセッションを追加します。
+
+```bash
+# パターン1: プロジェクト名とセッション名を明示的に指定
+itmux add my-project my_monitoring
+
+# パターン2: セッション名を自動生成
+itmux add my-project
+# → 自動的に my-project-1, my-project-2 などが割り当てられる
+
+# パターン3: 環境変数を使って省略
+itmux add
+# → $ITMUX_PROJECT に新しいセッションを追加
+```
+
+**動作**:
+1. 新しいtmuxセッションを作成
+2. iTerm2ウィンドウとして開く
+3. プロジェクトに紐付け（`user.projectID` タグ付け）
+4. `config.json` に自動的に追加
+
+**使用例**:
+```bash
+# プロジェクトを開いた状態で
+itmux open webapp
+# → 環境変数 ITMUX_PROJECT=webapp が設定される
+
+# 作業中に新しいウィンドウが必要になった
+itmux add monitoring
+# → webappプロジェクトに monitoring セッションを追加
+
+# プロジェクトを閉じる
+itmux close
+# → monitoring セッションも含めて config.json に保存される
+```
+
+### 6. 環境変数の活用
+
+iTmuxは `ITMUX_PROJECT` 環境変数でアクティブなプロジェクトを追跡します。
+
+```bash
+# プロジェクトを開くと環境変数が設定される
+itmux open webapp
+# → export ITMUX_PROJECT=webapp
+
+# 現在のプロジェクトを確認
+echo $ITMUX_PROJECT
+# → webapp
+
+# 環境変数があればプロジェクト名を省略可能
+itmux add           # webapp にセッションを追加
+itmux close         # webapp を閉じる
+
+# プロジェクトを閉じると環境変数がクリアされる
+itmux close
+# → unset ITMUX_PROJECT
+```
+
+**メリット**:
+- タイプ量が減る
+- 現在のプロジェクトが明確
+- シェル環境に統合しやすい
 
 ## プロジェクト定義
 
@@ -252,6 +326,7 @@ Projects:
 ```bash
 # 朝、仕事開始
 itmux open webapp
+# → 環境変数 ITMUX_PROJECT=webapp が設定される
 
 # [webapp_editor ウィンドウ]
 cd ~/work/webapp
@@ -269,15 +344,25 @@ python manage.py runserver
 cd ~/work/webapp
 tail -f logs/app.log
 
+# 作業中、一時的な監視ウィンドウが必要になった
+itmux add monitoring
+# → webappプロジェクトに monitoring セッションが追加される
+
+# [monitoring ウィンドウ]
+htop
+
 # 夕方、仕事終了
-itmux close webapp
-# → 全てのウィンドウが閉じる
+itmux close
+# → 全てのウィンドウが閉じる（monitoring含む）
 # → サーバーは動き続ける
+# → config.jsonに現在の状態が自動保存される
+# → 環境変数 ITMUX_PROJECT がクリアされる
 
 # 翌朝、再開
 itmux open webapp
 # → nvimは昨日開いたファイルそのまま
 # → サーバーは動き続けている
+# → monitoring セッションも復元される（htopは終了しているので空のシェル）
 ```
 
 ### 例2: 複数プロジェクトの切り替え
@@ -285,15 +370,17 @@ itmux open webapp
 ```bash
 # プロジェクトAで作業
 itmux open project-a
+# → ITMUX_PROJECT=project-a
 # ... 作業 ...
 
 # プロジェクトBに切り替え
-itmux close project-a
+itmux close          # project-aを自動保存して閉じる
 itmux open project-b
+# → ITMUX_PROJECT=project-b
 # ... 作業 ...
 
 # プロジェクトAに戻る
-itmux close project-b
+itmux close          # project-bを自動保存して閉じる
 itmux open project-a
 # → 先ほどの状態がそのまま復元
 ```
@@ -373,6 +460,30 @@ iTmuxはウィンドウを閉じるだけで、tmuxセッション（とその�
 # または、セッションごと削除
 tmux kill-session -t my_server
 ```
+
+### セッションを削除したい
+
+tmuxセッションを終了すると、次回の `close` 時に自動的に削除されます。
+
+```bash
+# パターン1: セッション内で exit
+exit
+# → tmuxセッションが終了
+
+# パターン2: tmux kill-session
+tmux kill-session -t my_monitoring
+# → セッションが削除される
+
+# プロジェクトを閉じる
+itmux close
+# → 終了したセッションは config.json から自動的に削除される
+# → 存在するセッションのみが保存される
+```
+
+**重要**: iTmuxは常に現在の状態をそのまま保存します
+- 追加したセッション → 自動的に追加
+- 削除したセッション → 自動的に削除
+- 変更したウィンドウサイズ → 自動的に更新
 
 ### 設定ファイルの場所
 

@@ -85,21 +85,30 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Mode（`-CC`）を統合し、�
    → 各ウィンドウに user.projectID タグ
 ```
 
-### Close操作
+### Close操作（自動同期）
 
 ```
 1. ユーザー入力
-   $ itmux close my-project
+   $ itmux close [project]
+   # project省略時は環境変数 $ITMUX_PROJECT から取得
 
 2. プロジェクトに属するウィンドウ検索
    for window in app.windows:
      if window.user.projectID == "my-project":
        target_windows.append(window)
 
-3. （オプション）現在のウィンドウサイズ保存
+3. 現在の状態を自動保存（必須）
+   sessions = []
    for window in target_windows:
-     size = get_window_size(window)
-     update_config(session_name, size)
+     session_name = window.user.tmux_session
+     window_size = get_window_size(window)
+     sessions.append({
+       "name": session_name,
+       "window_size": window_size
+     })
+
+   # config.jsonを上書き保存
+   update_config("my-project", sessions)
 
 4. 各ウィンドウをデタッチ
    for window in target_windows:
@@ -107,9 +116,49 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Mode（`-CC`）を統合し、�
      app.async_select_menu_item("tmux.Detach")
      await sleep(0.5)
 
-5. 完了
+5. 環境変数クリア
+   unset ITMUX_PROJECT
+
+6. 完了
    → iTerm2ウィンドウは閉じる
    → tmuxセッションはバックグラウンド継続
+   → config.jsonは現在の状態を反映
+```
+
+### Add操作（セッション追加）
+
+```
+1. ユーザー入力
+   $ itmux add [project] [session-name]
+   # project省略時は $ITMUX_PROJECT から取得
+   # session-name省略時は自動生成（例: project-1, project-2）
+
+2. セッション名決定
+   if session-name 指定あり:
+     use session-name
+   else:
+     session-name = generate_session_name(project)
+     # 例: my-project-1, my-project-2, ...
+
+3. iTerm2ウィンドウ作成（ゲートウェイ）
+   gateway_window = iterm2.Window.async_create()
+
+4. tmux -CC 新規セッション起動
+   tmux -CC new-session -s <session-name>
+
+5. WindowCreationMonitorで新ウィンドウ監視
+   → user.projectID = "<project>" タグ付け
+   → user.tmux_session = "<session-name>" タグ付け
+
+6. config.jsonに追加
+   add_session_to_config(project, session-name)
+
+7. ゲートウェイウィンドウクリーンアップ
+   gateway_window.async_close()
+
+8. 完了
+   → 新しいiTerm2ウィンドウが開く
+   → config.jsonに追加される
 ```
 
 ## コンポーネント構成
@@ -151,6 +200,70 @@ src/itmux/
   - `ProjectConfig`
   - `SessionConfig`
   - `WindowSize`
+
+## コマンド体系
+
+### 基本コマンド
+
+```bash
+# ヘルプ表示
+itmux
+itmux --help
+
+# プロジェクト一覧
+itmux list
+```
+
+### プロジェクト操作
+
+```bash
+# プロジェクトを開く
+itmux open <project>
+# → 環境変数 ITMUX_PROJECT=<project> を設定
+# → config.jsonのセッションを一括アタッチ
+
+# プロジェクトを閉じる
+itmux close [project]
+# → project省略時は $ITMUX_PROJECT から取得
+# → 現在の状態を自動保存（ウィンドウサイズ、セッションリスト）
+# → 環境変数 ITMUX_PROJECT をクリア
+```
+
+### セッション追加
+
+```bash
+# パターン1: プロジェクトとセッション名を指定
+itmux add <project> <session-name>
+# → 指定プロジェクトに、指定名のセッション追加
+# → config.json更新
+
+# パターン2: プロジェクト指定、セッション名は自動生成
+itmux add <project>
+# → セッション名は自動生成（例: project-1, project-2）
+
+# パターン3: 環境変数使用
+itmux add
+# → $ITMUX_PROJECT に追加
+# → 環境変数未設定時はエラー
+```
+
+### 環境変数
+
+```bash
+# ITMUX_PROJECT
+# - open時に自動設定
+# - close時に自動クリア
+# - add/close コマンドでプロジェクト名省略時に使用
+
+$ itmux open webapp
+# → export ITMUX_PROJECT=webapp
+
+$ echo $ITMUX_PROJECT
+# → webapp
+
+$ itmux add monitoring  # webappに追加
+$ itmux close           # webappを閉じる
+```
 
 ## データ構造
 
