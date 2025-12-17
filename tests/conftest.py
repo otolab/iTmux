@@ -1,9 +1,10 @@
 """tests/conftest.py - pytest設定と共通フィクスチャ."""
 
+import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from itmux.models import WindowSize, SessionConfig
+from itmux.models import WindowSize, SessionConfig, ProjectConfig
 
 
 @pytest.fixture
@@ -72,3 +73,42 @@ def mock_window_creation_monitor():
             return "new-window-id"
 
     return MockMonitor
+
+
+# Orchestrator用モックフィクスチャ
+
+
+@pytest.fixture
+def mock_config_manager():
+    """ConfigManagerのモック."""
+    config = MagicMock()
+    config.get_project.return_value = ProjectConfig(
+        name="test-project", tmux_sessions=[SessionConfig(name="session1")]
+    )
+    config.list_projects.return_value = ["test-project"]
+    return config
+
+
+@pytest.fixture
+def mock_iterm2_bridge():
+    """ITerm2Bridgeのモック（非同期）."""
+    bridge = AsyncMock()
+    bridge.find_windows_by_project.return_value = []
+    bridge.attach_session.return_value = "window-id-1"
+    bridge.add_session.return_value = "window-id-2"
+    return bridge
+
+
+@pytest.fixture
+def mock_subprocess():
+    """subprocessのモック."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        yield mock_run
+
+
+@pytest.fixture
+def mock_environ():
+    """os.environのモック."""
+    with patch.dict(os.environ, {}, clear=True):
+        yield os.environ
