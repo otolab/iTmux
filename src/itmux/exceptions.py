@@ -17,3 +17,15 @@ class SessionNotFoundError(ConfigError):
     """セッションが見つからないエラー."""
 
     pass
+
+
+class ITerm2Error(Exception):
+    """iTerm2 API連携エラー."""
+
+    pass
+
+
+class WindowCreationTimeoutError(ITerm2Error):
+    """ウィンドウ生成タイムアウトエラー."""
+
+    pass
