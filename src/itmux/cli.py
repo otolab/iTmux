@@ -1,6 +1,25 @@
 """iTmux CLI entry point."""
 
+import asyncio
+import sys
 import click
+import iterm2
+
+from .config import ConfigManager, DEFAULT_CONFIG_PATH
+from .orchestrator import ProjectOrchestrator
+from .iterm2_bridge import ITerm2Bridge
+from .exceptions import ProjectNotFoundError, ITerm2Error, ConfigError
+
+
+async def get_orchestrator() -> ProjectOrchestrator:
+    """iTerm2に接続してOrchestratorインスタンスを作成."""
+    connection = await iterm2.Connection.async_create()
+    app = await iterm2.async_get_app(connection)
+
+    config_manager = ConfigManager(DEFAULT_CONFIG_PATH)
+    bridge = ITerm2Bridge(connection, app)
+
+    return ProjectOrchestrator(config_manager, bridge)
 
 
 @click.group()
@@ -14,23 +33,100 @@ def main():
 @click.argument("project")
 def open(project: str):
     """Open or restore a project window set."""
-    click.echo(f"Opening project: {project}")
-    # TODO: Implement project opening logic
+    async def _open():
+        orchestrator = await get_orchestrator()
+        await orchestrator.open(project)
+
+    try:
+        asyncio.run(_open())
+        click.echo(f"✓ Opened project: {project}")
+    except ProjectNotFoundError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ITerm2Error as e:
+        click.echo(f"✗ iTerm2 Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"✗ Unexpected error: {e}", err=True)
+        sys.exit(1)
 
 
 @main.command()
-@click.argument("project")
-def close(project: str):
+@click.argument("project", required=False)
+def close(project: str | None):
     """Close and detach a project window set."""
-    click.echo(f"Closing project: {project}")
-    # TODO: Implement project closing logic
+    async def _close():
+        orchestrator = await get_orchestrator()
+        await orchestrator.close(project)
+
+    try:
+        asyncio.run(_close())
+        click.echo(f"✓ Closed project: {project or 'current'}")
+    except ValueError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ProjectNotFoundError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ITerm2Error as e:
+        click.echo(f"✗ iTerm2 Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"✗ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("project", required=False)
+@click.argument("session", required=False)
+def add(project: str | None, session: str | None):
+    """Add a new session to a project."""
+    async def _add():
+        orchestrator = await get_orchestrator()
+        await orchestrator.add(project, session)
+
+    try:
+        asyncio.run(_add())
+        click.echo(f"✓ Added session to project: {project or 'current'}")
+    except ValueError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ProjectNotFoundError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ITerm2Error as e:
+        click.echo(f"✗ iTerm2 Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"✗ Unexpected error: {e}", err=True)
+        sys.exit(1)
 
 
 @main.command()
 def list():
     """List all managed projects."""
-    click.echo("Managed projects:")
-    # TODO: Implement project listing logic
+    async def _list():
+        orchestrator = await get_orchestrator()
+        return orchestrator.list()
+
+    try:
+        projects = asyncio.run(_list())
+
+        if not projects:
+            click.echo("No projects configured.")
+            return
+
+        click.echo("Projects:")
+        for project_name, info in projects.items():
+            click.echo(f"  {project_name} ({info['count']} sessions)")
+            for session in info['sessions']:
+                click.echo(f"    - {session}")
+    except ConfigError as e:
+        click.echo(f"✗ Config Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"✗ Unexpected error: {e}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
