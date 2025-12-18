@@ -164,7 +164,7 @@ class TestAttachSession:
         self,
         mock_iterm2_connection,
         mock_iterm2_app,
-        mock_window_creation_monitor,
+        mock_new_session_monitor,
     ):
         """セッションアタッチ成功."""
         # ゲートウェイウィンドウのモック
@@ -181,16 +181,19 @@ class TestAttachSession:
         new_window.window_id = "new-window-id"
         new_window.async_set_variable = AsyncMock()
 
-        mock_iterm2_app.current_terminal_window = gateway_window
+        # async_create_windowでgatewayウィンドウを返す
+        mock_iterm2_app.async_create_window = AsyncMock(return_value=gateway_window)
 
-        # get_window_by_idは新規ウィンドウを返す
-        mock_iterm2_app.get_window_by_id = MagicMock(return_value=new_window)
+        # async_get_window_containing_sessionは新規ウィンドウを返す
+        mock_iterm2_app.async_get_window_containing_session = AsyncMock(
+            return_value=new_window
+        )
 
-        # WindowCreationMonitorのモックを設定
-        monitor_instance = mock_window_creation_monitor()
+        # NewSessionMonitorのモックを設定
+        monitor_instance = mock_new_session_monitor()
 
         with patch(
-            "itmux.iterm2_bridge.iterm2.WindowCreationMonitor",
+            "itmux.iterm2_bridge.iterm2.NewSessionMonitor",
             return_value=monitor_instance,
             create=True,
         ):
@@ -205,6 +208,11 @@ class TestAttachSession:
         cmd = gateway_session.async_send_text.call_args[0][0]
         assert "tmux -CC attach-session -t editor" in cmd
 
+        # async_get_window_containing_sessionが呼ばれたことを確認
+        mock_iterm2_app.async_get_window_containing_session.assert_called_once_with(
+            "new-session-id"
+        )
+
         # タグ付けが実行されたことを確認
         new_window.async_set_variable.assert_any_call("user.projectID", "test-project")
         new_window.async_set_variable.assert_any_call("user.tmux_session", "editor")
@@ -217,7 +225,7 @@ class TestAttachSession:
         self,
         mock_iterm2_connection,
         mock_iterm2_app,
-        mock_window_creation_monitor,
+        mock_new_session_monitor,
     ):
         """ウィンドウサイズ指定ありのアタッチ."""
         gateway_window = AsyncMock()
@@ -236,13 +244,16 @@ class TestAttachSession:
         new_session.async_send_text = AsyncMock()
         new_window.current_tab.current_session = new_session
 
-        mock_iterm2_app.current_terminal_window = gateway_window
+        mock_iterm2_app.async_create_window = AsyncMock(return_value=gateway_window)
+        mock_iterm2_app.async_get_window_containing_session = AsyncMock(
+            return_value=new_window
+        )
         mock_iterm2_app.get_window_by_id = MagicMock(return_value=new_window)
 
-        monitor_instance = mock_window_creation_monitor()
+        monitor_instance = mock_new_session_monitor()
 
         with patch(
-            "itmux.iterm2_bridge.iterm2.WindowCreationMonitor",
+            "itmux.iterm2_bridge.iterm2.NewSessionMonitor",
             return_value=monitor_instance,
             create=True,
         ):
@@ -266,9 +277,9 @@ class TestAttachSession:
         self,
         mock_iterm2_connection,
         mock_iterm2_app,
-        mock_window_creation_monitor,
+        mock_new_session_monitor,
     ):
-        """ウィンドウ作成タイムアウト."""
+        """セッション作成タイムアウト."""
         gateway_window = AsyncMock()
         gateway_window.window_id = "gateway-window-id"
         gateway_window.current_tab = AsyncMock()
@@ -276,7 +287,7 @@ class TestAttachSession:
         gateway_session.async_send_text = AsyncMock()
         gateway_window.current_tab.current_session = gateway_session
 
-        mock_iterm2_app.current_terminal_window = gateway_window
+        mock_iterm2_app.async_create_window = AsyncMock(return_value=gateway_window)
 
         # タイムアウトを発生させるモニター
         class TimeoutMonitor:
@@ -290,7 +301,7 @@ class TestAttachSession:
                 await asyncio.sleep(10)  # タイムアウトより長い
 
         with patch(
-            "itmux.iterm2_bridge.iterm2.WindowCreationMonitor",
+            "itmux.iterm2_bridge.iterm2.NewSessionMonitor",
             return_value=TimeoutMonitor(),
             create=True,
         ):
@@ -308,7 +319,7 @@ class TestAddSession:
         self,
         mock_iterm2_connection,
         mock_iterm2_app,
-        mock_window_creation_monitor,
+        mock_new_session_monitor,
     ):
         """新規セッション作成成功."""
         gateway_window = AsyncMock()
@@ -323,13 +334,15 @@ class TestAddSession:
         new_window.window_id = "new-window-id"
         new_window.async_set_variable = AsyncMock()
 
-        mock_iterm2_app.current_terminal_window = gateway_window
-        mock_iterm2_app.get_window_by_id = MagicMock(return_value=new_window)
+        mock_iterm2_app.async_create_window = AsyncMock(return_value=gateway_window)
+        mock_iterm2_app.async_get_window_containing_session = AsyncMock(
+            return_value=new_window
+        )
 
-        monitor_instance = mock_window_creation_monitor()
+        monitor_instance = mock_new_session_monitor()
 
         with patch(
-            "itmux.iterm2_bridge.iterm2.WindowCreationMonitor",
+            "itmux.iterm2_bridge.iterm2.NewSessionMonitor",
             return_value=monitor_instance,
             create=True,
         ):
@@ -342,6 +355,11 @@ class TestAddSession:
         gateway_session.async_send_text.assert_called()
         cmd = gateway_session.async_send_text.call_args[0][0]
         assert "tmux -CC new-session -s logs" in cmd
+
+        # async_get_window_containing_sessionが呼ばれたことを確認
+        mock_iterm2_app.async_get_window_containing_session.assert_called_once_with(
+            "new-session-id"
+        )
 
         # タグ付けが実行されたことを確認
         new_window.async_set_variable.assert_any_call("user.projectID", "test-project")

@@ -1,9 +1,11 @@
 """iTmux CLI entry point."""
 
 import asyncio
+import os
 import sys
 import click
 import iterm2
+from pathlib import Path
 
 from .config import ConfigManager, DEFAULT_CONFIG_PATH
 from .orchestrator import ProjectOrchestrator
@@ -16,7 +18,11 @@ async def get_orchestrator() -> ProjectOrchestrator:
     connection = await iterm2.Connection.async_create()
     app = await iterm2.async_get_app(connection)
 
-    config_manager = ConfigManager(DEFAULT_CONFIG_PATH)
+    # 環境変数があれば優先、なければDEFAULT_CONFIG_PATHを使用
+    config_path_str = os.environ.get("ITMUX_CONFIG_PATH")
+    config_path = Path(config_path_str) if config_path_str else DEFAULT_CONFIG_PATH
+
+    config_manager = ConfigManager(config_path)
     bridge = ITerm2Bridge(connection, app)
 
     return ProjectOrchestrator(config_manager, bridge)

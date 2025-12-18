@@ -107,17 +107,37 @@ def cleanup_tmux_sessions():
 @pytest.fixture
 def cli_runner(temp_config_file, cleanup_tmux_sessions, monkeypatch):
     """CLIコマンド実行用のヘルパー."""
-    from click.testing import CliRunner
-    from itmux.cli import main
+    import subprocess
+    from pathlib import Path
 
-    # cli.pyでインポートされたDEFAULT_CONFIG_PATHをパッチ
+    # 環境変数でconfig pathを上書き
+    monkeypatch.setenv("ITMUX_CONFIG_PATH", str(temp_config_file))
+
+    # cli.pyでインポートされたDEFAULT_CONFIG_PATHもパッチ
     import itmux.cli
     monkeypatch.setattr(itmux.cli, "DEFAULT_CONFIG_PATH", temp_config_file)
 
-    runner = CliRunner()
-
     def run_command(*args, **kwargs):
         """コマンドを実行して結果を返す."""
-        return runner.invoke(main, args, **kwargs)
+        # 実際のプロセスでCLIを実行
+        cmd = ["uv", "run", "itmux"] + list(args)
+        env = os.environ.copy()
+        env["ITMUX_CONFIG_PATH"] = str(temp_config_file)
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            env=env
+        )
+
+        # Click.CliRunnerのResultと互換性のあるオブジェクトを返す
+        class Result:
+            def __init__(self, returncode, stdout, stderr):
+                self.exit_code = returncode
+                self.output = stdout + stderr
+                self.exception = None if returncode == 0 else returncode
+
+        return Result(result.returncode, result.stdout, result.stderr)
 
     return run_command

@@ -59,8 +59,8 @@ def mock_iterm2_session():
 
 
 @pytest.fixture
-def mock_window_creation_monitor():
-    """WindowCreationMonitor のモック（コンテキストマネージャ）."""
+def mock_new_session_monitor():
+    """NewSessionMonitor のモック（コンテキストマネージャ）."""
 
     class MockMonitor:
         async def __aenter__(self):
@@ -70,7 +70,7 @@ def mock_window_creation_monitor():
             return None
 
         async def async_get(self):
-            return "new-window-id"
+            return "new-session-id"
 
     return MockMonitor
 

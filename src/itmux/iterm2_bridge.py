@@ -98,40 +98,43 @@ class ITerm2Bridge:
             str: 作成されたウィンドウID
 
         Raises:
-            WindowCreationTimeoutError: ウィンドウ作成がタイムアウト
+            WindowCreationTimeoutError: セッション作成がタイムアウト
             ITerm2Error: その他のiTerm2 APIエラー
         """
         try:
-            # 1. ゲートウェイウィンドウを取得
-            gateway = self.app.current_terminal_window
+            # 1. 専用ゲートウェイウィンドウを作成
+            gateway = await self.app.async_create_window()
 
-            # 2. WindowCreationMonitorで新ウィンドウ監視開始
-            async with iterm2.WindowCreationMonitor(self.connection) as monitor:
+            # 2. NewSessionMonitorで新セッション監視開始
+            async with iterm2.NewSessionMonitor(self.connection) as monitor:
                 # 3. tmux -CC attach-session コマンド送信
                 session = gateway.current_tab.current_session
                 cmd = f"tmux -CC attach-session -t {session_name}\n"
                 await session.async_send_text(cmd)
 
-                # 4. 新ウィンドウ作成を待つ（タイムアウト5秒）
+                # 4. 新セッション作成を待つ（タイムアウト5秒）
                 try:
-                    new_window_id = await asyncio.wait_for(
+                    new_session_id = await asyncio.wait_for(
                         monitor.async_get(), timeout=5.0
                     )
                 except asyncio.TimeoutError:
                     raise WindowCreationTimeoutError(
-                        f"Window creation timed out for session: {session_name}"
+                        f"Session creation timed out for: {session_name}"
                     )
 
-            # 5. 新ウィンドウにタグ付け
-            new_window = self.app.get_window_by_id(new_window_id)
-            await new_window.async_set_variable("user.projectID", project_name)
-            await new_window.async_set_variable("user.tmux_session", session_name)
+            # 5. セッションIDからWindowを取得
+            window = await self.app.async_get_window_containing_session(new_session_id)
+            new_window_id = window.window_id
 
-            # 6. ウィンドウサイズ復元（オプション）
+            # 6. 新ウィンドウにタグ付け
+            await window.async_set_variable("user.projectID", project_name)
+            await window.async_set_variable("user.tmux_session", session_name)
+
+            # 7. ウィンドウサイズ復元（オプション）
             if window_size is not None:
                 await self.set_window_size(new_window_id, window_size)
 
-            # 7. ゲートウェイクリーンアップ
+            # 8. ゲートウェイクリーンアップ
             try:
                 await gateway.async_close()
             except Exception:
@@ -160,36 +163,39 @@ class ITerm2Bridge:
             str: 作成されたウィンドウID
 
         Raises:
-            WindowCreationTimeoutError: ウィンドウ作成がタイムアウト
+            WindowCreationTimeoutError: セッション作成がタイムアウト
             ITerm2Error: その他のiTerm2 APIエラー
         """
         try:
-            # 1. ゲートウェイウィンドウを取得
-            gateway = self.app.current_terminal_window
+            # 1. 専用ゲートウェイウィンドウを作成
+            gateway = await self.app.async_create_window()
 
-            # 2. WindowCreationMonitorで新ウィンドウ監視開始
-            async with iterm2.WindowCreationMonitor(self.connection) as monitor:
+            # 2. NewSessionMonitorで新セッション監視開始
+            async with iterm2.NewSessionMonitor(self.connection) as monitor:
                 # 3. tmux -CC new-session コマンド送信
                 session = gateway.current_tab.current_session
                 cmd = f"tmux -CC new-session -s {session_name}\n"
                 await session.async_send_text(cmd)
 
-                # 4. 新ウィンドウ作成を待つ（タイムアウト5秒）
+                # 4. 新セッション作成を待つ（タイムアウト5秒）
                 try:
-                    new_window_id = await asyncio.wait_for(
+                    new_session_id = await asyncio.wait_for(
                         monitor.async_get(), timeout=5.0
                     )
                 except asyncio.TimeoutError:
                     raise WindowCreationTimeoutError(
-                        f"Window creation timed out for session: {session_name}"
+                        f"Session creation timed out for: {session_name}"
                     )
 
-            # 5. 新ウィンドウにタグ付け
-            new_window = self.app.get_window_by_id(new_window_id)
-            await new_window.async_set_variable("user.projectID", project_name)
-            await new_window.async_set_variable("user.tmux_session", session_name)
+            # 5. セッションIDからWindowを取得
+            window = await self.app.async_get_window_containing_session(new_session_id)
+            new_window_id = window.window_id
 
-            # 6. ゲートウェイクリーンアップ
+            # 6. 新ウィンドウにタグ付け
+            await window.async_set_variable("user.projectID", project_name)
+            await window.async_set_variable("user.tmux_session", session_name)
+
+            # 7. ゲートウェイクリーンアップ
             try:
                 await gateway.async_close()
             except Exception:
