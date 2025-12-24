@@ -28,13 +28,6 @@ async def get_orchestrator() -> ProjectOrchestrator:
     return ProjectOrchestrator(config_manager, bridge)
 
 
-async def get_bridge() -> ITerm2Bridge:
-    """iTerm2に接続してBridgeインスタンスを作成."""
-    connection = await iterm2.Connection.async_create()
-    app = await iterm2.async_get_app(connection)
-    return ITerm2Bridge(connection, app)
-
-
 @click.group()
 @click.version_option()
 def main():
@@ -91,16 +84,16 @@ def close(project: str | None):
 
 @main.command()
 @click.argument("project", required=False)
-@click.argument("session", required=False)
-def add(project: str | None, session: str | None):
-    """Add a new session to a project."""
+@click.argument("window", required=False)
+def add(project: str | None, window: str | None):
+    """Add a new window to a project."""
     async def _add():
         orchestrator = await get_orchestrator()
-        await orchestrator.add(project, session)
+        await orchestrator.add(project, window)
 
     try:
         asyncio.run(_add())
-        click.echo(f"✓ Added session to project: {project or 'current'}")
+        click.echo(f"✓ Added window to project: {project or 'current'}")
     except ValueError as e:
         click.echo(f"✗ Error: {e}", err=True)
         sys.exit(1)
@@ -131,76 +124,14 @@ def list():
 
         click.echo("Projects:")
         for project_name, info in projects.items():
-            click.echo(f"  {project_name} ({info['count']} sessions)")
-            for session in info['sessions']:
-                click.echo(f"    - {session}")
+            click.echo(f"  {project_name} ({info['count']} windows)")
+            for window in info['windows']:
+                click.echo(f"    - {window}")
     except ConfigError as e:
         click.echo(f"✗ Config Error: {e}", err=True)
         sys.exit(1)
     except Exception as e:
         click.echo(f"✗ Unexpected error: {e}", err=True)
-        sys.exit(1)
-
-
-@main.group()
-def gateway():
-    """Gateway management commands."""
-    pass
-
-
-@gateway.command()
-def status():
-    """Check gateway status."""
-    async def _status():
-        bridge = await get_bridge()
-        return await bridge.get_gateway_status()
-
-    try:
-        status = asyncio.run(_status())
-        if status:
-            click.echo("Gateway status:")
-            click.echo(f"  Connection ID: {status['connection_id']}")
-            click.echo(f"  Created at: {status['created_at']}")
-            click.echo(f"  Alive: {status['alive']}")
-        else:
-            click.echo("No gateway found.")
-    except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-
-
-@gateway.command()
-def create():
-    """Create or get existing gateway."""
-    async def _create():
-        bridge = await get_bridge()
-        _, conn = await bridge.get_or_create_gateway()
-        return conn.connection_id
-
-    try:
-        conn_id = asyncio.run(_create())
-        click.echo("✓ Gateway ready:")
-        click.echo(f"  Connection ID: {conn_id}")
-    except ITerm2Error as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"✗ Unexpected error: {e}", err=True)
-        sys.exit(1)
-
-
-@gateway.command()
-def close():
-    """Close gateway (detaches all tmux sessions)."""
-    async def _close():
-        bridge = await get_bridge()
-        await bridge.close_gateway()
-
-    try:
-        asyncio.run(_close())
-        click.echo("✓ Gateway closed")
-    except Exception as e:
-        click.echo(f"✗ Error: {e}", err=True)
         sys.exit(1)
 
 

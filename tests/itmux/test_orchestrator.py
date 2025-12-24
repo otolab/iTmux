@@ -83,13 +83,13 @@ class TestList:
             ProjectConfig(
                 name="project1",
                 tmux_windows=[
-                    WindowConfig(name="session1"),
-                    WindowConfig(name="session2"),
+                    WindowConfig(name="editor"),
+                    WindowConfig(name="server"),
                 ],
             ),
             ProjectConfig(
                 name="project2",
-                tmux_windows=[WindowConfig(name="session3")],
+                tmux_windows=[WindowConfig(name="main")],
             ),
         ]
 
@@ -97,8 +97,8 @@ class TestList:
         result = orchestrator.list()
 
         assert result == {
-            "project1": {"windows": ["session1", "session2"], "count": 2},
-            "project2": {"windows": ["session3"], "count": 1},
+            "project1": {"windows": ["editor", "server"], "count": 2},
+            "project2": {"windows": ["main"], "count": 1},
         }
 
     def test_list_empty_projects(self, mock_config_manager, mock_iterm2_bridge):
@@ -132,10 +132,10 @@ class TestOpen:
     async def test_open_attach_existing_windows(
         self, mock_config_manager, mock_iterm2_bridge, mock_subprocess, mock_environ
     ):
-        """既存セッションにアタッチ."""
+        """既存ウィンドウにアタッチ."""
         windows = [
-            WindowConfig(name="session1"),
-            WindowConfig(name="session2"),
+            WindowConfig(name="editor"),
+            WindowConfig(name="server"),
         ]
         mock_config_manager.get_project.return_value = ProjectConfig(
             name="test-project",
@@ -179,9 +179,9 @@ class TestOpen:
     async def test_open_with_window_size(
         self, mock_config_manager, mock_iterm2_bridge, mock_subprocess, mock_environ
     ):
-        """ウィンドウサイズ付きセッション."""
+        """ウィンドウサイズ付きウィンドウ."""
         window_size = WindowSize(columns=200, lines=60)
-        windows = [WindowConfig(name="session1", window_size=window_size)]
+        windows = [WindowConfig(name="editor", window_size=window_size)]
         mock_config_manager.get_project.return_value = ProjectConfig(
             name="test-project",
             tmux_windows=windows,
@@ -221,11 +221,11 @@ class TestClose:
         # モックウィンドウ設定
         window1 = AsyncMock()
         window1.window_id = "window-1"
-        window1.async_get_variable = AsyncMock(return_value="session1")
+        window1.async_get_variable = AsyncMock(return_value="editor")
 
         window2 = AsyncMock()
         window2.window_id = "window-2"
-        window2.async_get_variable = AsyncMock(return_value="session2")
+        window2.async_get_variable = AsyncMock(return_value="server")
 
         mock_iterm2_bridge.find_windows_by_project.return_value = [window1, window2]
 
@@ -238,8 +238,8 @@ class TestClose:
         assert args[0][0] == "test-project"
         windows = args[0][1]
         assert len(windows) == 2
-        assert windows[0].name == "session1"
-        assert windows[1].name == "session2"
+        assert windows[0].name == "editor"
+        assert windows[1].name == "server"
 
         # detach_sessionが呼ばれる
         assert mock_iterm2_bridge.detach_session.call_count == 2

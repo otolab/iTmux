@@ -18,8 +18,8 @@ class TestList:
         # orchestratorのモック
         mock_orchestrator = MagicMock()
         mock_orchestrator.list.return_value = {
-            "project1": {"sessions": ["session1", "session2"], "count": 2},
-            "project2": {"sessions": ["session3"], "count": 1},
+            "project1": {"windows": ["editor", "server"], "count": 2},
+            "project2": {"windows": ["main"], "count": 1},
         }
 
         # get_orchestratorを非同期関数としてモック
@@ -31,11 +31,11 @@ class TestList:
 
         assert result.exit_code == 0
         assert "Projects:" in result.output
-        assert "project1 (2 sessions)" in result.output
-        assert "session1" in result.output
-        assert "session2" in result.output
-        assert "project2 (1 sessions)" in result.output
-        assert "session3" in result.output
+        assert "project1 (2 windows)" in result.output
+        assert "editor" in result.output
+        assert "server" in result.output
+        assert "project2 (1 windows)" in result.output
+        assert "main" in result.output
 
     def test_list_no_projects(self):
         """プロジェクトが0個."""
@@ -185,7 +185,7 @@ class TestAdd:
     """addコマンドのテスト."""
 
     def test_add_with_both_args(self):
-        """プロジェクト名とセッション名を指定."""
+        """プロジェクト名とウィンドウ名を指定."""
         runner = CliRunner()
 
         mock_orchestrator = AsyncMock()
@@ -198,11 +198,11 @@ class TestAdd:
             result = runner.invoke(main, ["add", "test-project", "new-session"])
 
         assert result.exit_code == 0
-        assert "✓ Added session to project: test-project" in result.output
+        assert "✓ Added window to project: test-project" in result.output
         mock_orchestrator.add.assert_called_once_with("test-project", "new-session")
 
     def test_add_with_project_only(self):
-        """プロジェクト名のみ（セッション名自動生成）."""
+        """プロジェクト名のみ（ウィンドウ名自動生成）."""
         runner = CliRunner()
 
         mock_orchestrator = AsyncMock()
@@ -215,7 +215,7 @@ class TestAdd:
             result = runner.invoke(main, ["add", "test-project"])
 
         assert result.exit_code == 0
-        assert "✓ Added session to project: test-project" in result.output
+        assert "✓ Added window to project: test-project" in result.output
         mock_orchestrator.add.assert_called_once_with("test-project", None)
 
     def test_add_without_args(self):
@@ -232,5 +232,5 @@ class TestAdd:
             result = runner.invoke(main, ["add"])
 
         assert result.exit_code == 0
-        assert "✓ Added session to project: current" in result.output
+        assert "✓ Added window to project: current" in result.output
         mock_orchestrator.add.assert_called_once_with(None, None)
