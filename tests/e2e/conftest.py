@@ -68,7 +68,7 @@ def temp_config_file(temp_config_dir):
         "projects": {
             "e2e-test-project": {
                 "name": "e2e-test-project",
-                "tmux_sessions": [
+                "tmux_windows": [
                     {"name": "e2e_session1"},
                     {"name": "e2e_session2"}
                 ]

@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 
 from itmux.config import ConfigManager, load_config, get_project, list_projects
-from itmux.models import Config, ProjectConfig, SessionConfig, WindowSize
+from itmux.models import Config, ProjectConfig, WindowConfig, WindowSize
 from itmux.exceptions import ConfigError, ProjectNotFoundError
 
 
@@ -22,9 +22,9 @@ def sample_config_data():
         "projects": {
             "test-project": {
                 "name": "test-project",
-                "tmux_sessions": [
-                    {"name": "session1", "window_size": {"columns": 200, "lines": 60}},
-                    {"name": "session2"},
+                "tmux_windows": [
+                    {"name": "window1", "window_size": {"columns": 200, "lines": 60}},
+                    {"name": "window2"},
                 ],
             }
         }
@@ -50,7 +50,7 @@ class TestConfigManager:
         config = manager.load()
 
         assert "test-project" in config.projects
-        assert len(config.projects["test-project"].tmux_sessions) == 2
+        assert len(config.projects["test-project"].tmux_windows) == 2
 
     def test_load_invalid_json_raises_error(self, temp_config_file):
         """不正なJSON形式はエラー."""
@@ -81,9 +81,9 @@ class TestConfigManager:
             projects={
                 "my-project": ProjectConfig(
                     name="my-project",
-                    tmux_sessions=[
-                        SessionConfig(
-                            name="s1", window_size=WindowSize(columns=100, lines=50)
+                    tmux_windows=[
+                        WindowConfig(
+                            name="w1", window_size=WindowSize(columns=100, lines=50)
                         )
                     ],
                 )
@@ -107,7 +107,7 @@ class TestConfigManager:
         project = manager.get_project("test-project")
 
         assert project.name == "test-project"
-        assert len(project.tmux_sessions) == 2
+        assert len(project.tmux_windows) == 2
 
     def test_get_project_nonexistent_raises_error(self, temp_config_file):
         """存在しないプロジェクトはエラー."""
@@ -134,29 +134,29 @@ class TestConfigManager:
 
         assert projects == []
 
-    def test_update_project_sessions(self, temp_config_file, sample_config_data):
-        """セッションリスト更新."""
+    def test_update_project_windows(self, temp_config_file, sample_config_data):
+        """ウィンドウリスト更新."""
         with open(temp_config_file, "w") as f:
             json.dump(sample_config_data, f)
 
         manager = ConfigManager(temp_config_file)
         manager.load()
 
-        # 新しいセッションリスト
-        new_sessions = [
-            SessionConfig(name="updated1"),
-            SessionConfig(name="updated2"),
-            SessionConfig(name="updated3"),
+        # 新しいウィンドウリスト
+        new_windows = [
+            WindowConfig(name="updated1"),
+            WindowConfig(name="updated2"),
+            WindowConfig(name="updated3"),
         ]
 
-        manager.update_project("test-project", new_sessions)
+        manager.update_project("test-project", new_windows)
 
         # 再読み込みして確認
         manager2 = ConfigManager(temp_config_file)
         project = manager2.get_project("test-project")
 
-        assert len(project.tmux_sessions) == 3
-        assert project.tmux_sessions[0].name == "updated1"
+        assert len(project.tmux_windows) == 3
+        assert project.tmux_windows[0].name == "updated1"
 
     def test_update_project_nonexistent_raises_error(self, temp_config_file):
         """存在しないプロジェクトの更新はエラー."""
@@ -166,43 +166,43 @@ class TestConfigManager:
         with pytest.raises(ProjectNotFoundError):
             manager.update_project("nonexistent", [])
 
-    def test_add_session(self, temp_config_file, sample_config_data):
-        """セッション追加."""
+    def test_add_window(self, temp_config_file, sample_config_data):
+        """ウィンドウ追加."""
         with open(temp_config_file, "w") as f:
             json.dump(sample_config_data, f)
 
         manager = ConfigManager(temp_config_file)
         manager.load()
 
-        new_session = SessionConfig(name="session3")
-        manager.add_session("test-project", new_session)
+        new_window = WindowConfig(name="window3")
+        manager.add_window("test-project", new_window)
 
         # 確認
         project = manager.get_project("test-project")
-        assert len(project.tmux_sessions) == 3
+        assert len(project.tmux_windows) == 3
 
-    def test_add_duplicate_session_raises_error(
+    def test_add_duplicate_window_raises_error(
         self, temp_config_file, sample_config_data
     ):
-        """重複セッション追加はエラー."""
+        """重複ウィンドウ追加はエラー."""
         with open(temp_config_file, "w") as f:
             json.dump(sample_config_data, f)
 
         manager = ConfigManager(temp_config_file)
         manager.load()
 
-        duplicate_session = SessionConfig(name="session1")
+        duplicate_window = WindowConfig(name="window1")
 
         with pytest.raises(ConfigError, match="already exists"):
-            manager.add_session("test-project", duplicate_session)
+            manager.add_window("test-project", duplicate_window)
 
-    def test_add_session_to_nonexistent_project_raises_error(self, temp_config_file):
-        """存在しないプロジェクトへのセッション追加はエラー."""
+    def test_add_window_to_nonexistent_project_raises_error(self, temp_config_file):
+        """存在しないプロジェクトへのウィンドウ追加はエラー."""
         manager = ConfigManager(temp_config_file)
         manager.load()
 
         with pytest.raises(ProjectNotFoundError):
-            manager.add_session("nonexistent", SessionConfig(name="session"))
+            manager.add_window("nonexistent", WindowConfig(name="window"))
 
     def test_save_without_load_raises_error(self, temp_config_file):
         """load前のsave（引数なし）はエラー."""
@@ -218,7 +218,7 @@ class TestConfigManager:
         config = Config(
             projects={
                 "my-project": ProjectConfig(
-                    name="my-project", tmux_sessions=[SessionConfig(name="s1")]
+                    name="my-project", tmux_windows=[WindowConfig(name="w1")]
                 )
             }
         )
@@ -230,6 +230,7 @@ class TestConfigManager:
             data = json.load(f)
 
         assert "my-project" in data["projects"]
+        assert "tmux_windows" in data["projects"]["my-project"]
 
 
 class TestFunctionAPI:

@@ -19,23 +19,23 @@ class WindowSize(BaseModel):
         return v
 
 
-class SessionConfig(BaseModel):
-    """tmuxセッション設定."""
+class WindowConfig(BaseModel):
+    """tmuxウィンドウ設定."""
 
-    name: str = Field(min_length=1, description="セッション名")
+    name: str = Field(min_length=1, description="ウィンドウ名")
     window_size: Optional[WindowSize] = Field(
         default=None, description="ウィンドウサイズ（省略時はデフォルト）"
     )
 
     @field_validator("name")
     @classmethod
-    def validate_session_name(cls, v: str) -> str:
+    def validate_window_name(cls, v: str) -> str:
         """tmux互換の命名規則を検証."""
-        # tmuxセッション名で使用不可な文字
+        # tmuxウィンドウ名で使用不可な文字
         invalid_chars = [".", ":", "[", "]"]
         for char in invalid_chars:
             if char in v:
-                raise ValueError(f'session name cannot contain "{char}"')
+                raise ValueError(f'window name cannot contain "{char}"')
         return v
 
 
@@ -43,19 +43,19 @@ class ProjectConfig(BaseModel):
     """プロジェクト設定."""
 
     name: str = Field(min_length=1, description="プロジェクト名")
-    tmux_sessions: list[SessionConfig] = Field(
-        default_factory=list, description="tmuxセッションリスト"
+    tmux_windows: list[WindowConfig] = Field(
+        default_factory=list, description="tmuxウィンドウリスト"
     )
 
-    @field_validator("tmux_sessions")
+    @field_validator("tmux_windows")
     @classmethod
-    def validate_unique_sessions(
-        cls, v: list[SessionConfig]
-    ) -> list[SessionConfig]:
-        """セッション名の重複チェック."""
-        names = [s.name for s in v]
+    def validate_unique_windows(
+        cls, v: list[WindowConfig]
+    ) -> list[WindowConfig]:
+        """ウィンドウ名の重複チェック."""
+        names = [w.name for w in v]
         if len(names) != len(set(names)):
-            raise ValueError("session names must be unique")
+            raise ValueError("window names must be unique")
         return v
 
 

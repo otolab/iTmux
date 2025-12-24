@@ -79,7 +79,7 @@ iTerm2とtmuxを統合するモードです。
 {
   "projects": {
     "my-project": {
-      "tmux_sessions": [
+      "tmux_windows": [
         {
           "name": "my_editor",
           "window_size": {
@@ -244,7 +244,7 @@ itmux close
 {
   "projects": {
     "simple-project": {
-      "tmux_sessions": [
+      "tmux_windows": [
         {
           "name": "main"
         }
@@ -277,13 +277,13 @@ itmux close
 {
   "projects": {
     "work-project": {
-      "tmux_sessions": [
+      "tmux_windows": [
         {"name": "work_editor"},
         {"name": "work_server"}
       ]
     },
     "personal-project": {
-      "tmux_sessions": [
+      "tmux_windows": [
         {"name": "personal_main"}
       ]
     }
@@ -299,7 +299,7 @@ itmux close
 {
   "projects": {
     "webapp": {
-      "tmux_sessions": [
+      "tmux_windows": [
         {
           "name": "webapp_editor",
           "window_size": {"columns": 220, "lines": 65}
@@ -391,7 +391,7 @@ itmux open project-a
 {
   "projects": {
     "multi-display": {
-      "tmux_sessions": [
+      "tmux_windows": [
         {
           "name": "main_editor",
           "window_size": {"columns": 250, "lines": 70}

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from .models import Config, ProjectConfig, SessionConfig
+from .models import Config, ProjectConfig, WindowConfig
 from .exceptions import ConfigError, ProjectNotFoundError
 
 
@@ -103,15 +103,15 @@ class ConfigManager:
         return list(self._config.projects.keys())
 
     def update_project(
-        self, project_name: str, sessions: list[SessionConfig]
+        self, project_name: str, windows: list[WindowConfig]
     ) -> None:
-        """プロジェクトのセッションリストを更新（自動同期用）.
+        """プロジェクトのウィンドウリストを更新（自動同期用）.
 
-        close時に現在のセッションリストで設定を上書きします。
+        close時に現在のウィンドウリストで設定を上書きします。
 
         Args:
             project_name: プロジェクト名
-            sessions: 現在のセッションリスト
+            windows: 現在のウィンドウリスト
 
         Raises:
             ProjectNotFoundError: プロジェクトが存在しない
@@ -122,22 +122,22 @@ class ConfigManager:
         if project_name not in self._config.projects:
             raise ProjectNotFoundError(f"Project '{project_name}' not found")
 
-        # セッションリストを更新
-        self._config.projects[project_name].tmux_sessions = sessions
+        # ウィンドウリストを更新
+        self._config.projects[project_name].tmux_windows = windows
 
         # 自動保存
         self.save()
 
-    def add_session(self, project_name: str, session: SessionConfig) -> None:
-        """プロジェクトに新しいセッションを追加.
+    def add_window(self, project_name: str, window: WindowConfig) -> None:
+        """プロジェクトに新しいウィンドウを追加.
 
         Args:
             project_name: プロジェクト名
-            session: 追加するセッション
+            window: 追加するウィンドウ
 
         Raises:
             ProjectNotFoundError: プロジェクトが存在しない
-            ConfigError: セッション名が重複
+            ConfigError: ウィンドウ名が重複
         """
         if self._config is None:
             self.load()
@@ -148,13 +148,13 @@ class ConfigManager:
         project = self._config.projects[project_name]
 
         # 重複チェック
-        if any(s.name == session.name for s in project.tmux_sessions):
+        if any(w.name == window.name for w in project.tmux_windows):
             raise ConfigError(
-                f"Session '{session.name}' already exists in project '{project_name}'"
+                f"Window '{window.name}' already exists in project '{project_name}'"
             )
 
-        # セッション追加
-        project.tmux_sessions.append(session)
+        # ウィンドウ追加
+        project.tmux_windows.append(window)
 
         # 自動保存
         self.save()

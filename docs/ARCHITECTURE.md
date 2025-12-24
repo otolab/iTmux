@@ -273,7 +273,7 @@ $ itmux close           # webappを閉じる
 {
   "projects": {
     "my-project": {
-      "tmux_sessions": [
+      "tmux_windows": [
         {
           "name": "my_editor",
           "window_size": {

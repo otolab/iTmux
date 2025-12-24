@@ -18,6 +18,24 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Modeを組み合わせて、プ�
 - iTerm2 Python API
 - tmux（バックエンド）
 
+## 前提条件
+
+### 必須のiTerm2設定
+
+iTmuxを使用するには、iTerm2で以下の設定を有効にする必要があります：
+
+**"Automatically bury the tmux client session after connecting"**
+
+設定場所: `iTerm2 > Settings > General > tmux`
+
+この設定により、tmux Control Mode接続時に作成されるgatewayウィンドウが自動的に非表示になります。
+
+### 必須のソフトウェア
+
+- iTerm2 (macOS)
+- tmux
+- Python 3.12+
+
 ## 開発
 
 ### セットアップ

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from itmux.models import WindowSize, SessionConfig, ProjectConfig, Config
+from itmux.models import WindowSize, WindowConfig, ProjectConfig, Config
 
 
 class TestWindowSize:
@@ -39,58 +39,58 @@ class TestWindowSize:
         assert ws.lines == 40
 
 
-class TestSessionConfig:
-    """SessionConfigのテスト."""
+class TestWindowConfig:
+    """WindowConfigのテスト."""
 
-    def test_valid_session(self):
-        """正常なセッション."""
-        session = SessionConfig(name="my_editor")
-        assert session.name == "my_editor"
-        assert session.window_size is None
+    def test_valid_window(self):
+        """正常なウィンドウ."""
+        window = WindowConfig(name="my_editor")
+        assert window.name == "my_editor"
+        assert window.window_size is None
 
-    def test_session_with_window_size(self):
-        """ウィンドウサイズ付きセッション."""
-        session = SessionConfig(
+    def test_window_with_window_size(self):
+        """ウィンドウサイズ付きウィンドウ."""
+        window = WindowConfig(
             name="my_server", window_size=WindowSize(columns=120, lines=40)
         )
-        assert session.window_size.columns == 120
+        assert window.window_size.columns == 120
 
-    def test_invalid_session_name_with_colon(self):
-        """セッション名にコロン含むとエラー."""
+    def test_invalid_window_name_with_colon(self):
+        """ウィンドウ名にコロン含むとエラー."""
         with pytest.raises(ValidationError):
-            SessionConfig(name="invalid:name")
+            WindowConfig(name="invalid:name")
 
-    def test_invalid_session_name_with_dot(self):
-        """セッション名にドット含むとエラー."""
+    def test_invalid_window_name_with_dot(self):
+        """ウィンドウ名にドット含むとエラー."""
         with pytest.raises(ValidationError):
-            SessionConfig(name="invalid.name")
+            WindowConfig(name="invalid.name")
 
-    def test_invalid_session_name_with_bracket(self):
-        """セッション名にブラケット含むとエラー."""
+    def test_invalid_window_name_with_bracket(self):
+        """ウィンドウ名にブラケット含むとエラー."""
         with pytest.raises(ValidationError):
-            SessionConfig(name="invalid[name]")
+            WindowConfig(name="invalid[name]")
 
-    def test_empty_session_name_raises_error(self):
-        """空のセッション名はエラー."""
+    def test_empty_window_name_raises_error(self):
+        """空のウィンドウ名はエラー."""
         with pytest.raises(ValidationError):
-            SessionConfig(name="")
+            WindowConfig(name="")
 
     def test_json_serialization(self):
         """JSON変換."""
-        session = SessionConfig(
-            name="test_session", window_size=WindowSize(columns=200, lines=60)
+        window = WindowConfig(
+            name="test_window", window_size=WindowSize(columns=200, lines=60)
         )
-        data = session.model_dump(exclude_none=True)
+        data = window.model_dump(exclude_none=True)
         assert data == {
-            "name": "test_session",
+            "name": "test_window",
             "window_size": {"columns": 200, "lines": 60},
         }
 
     def test_json_serialization_without_window_size(self):
         """ウィンドウサイズなしのJSON変換."""
-        session = SessionConfig(name="test_session")
-        data = session.model_dump(exclude_none=True)
-        assert data == {"name": "test_session"}
+        window = WindowConfig(name="test_window")
+        data = window.model_dump(exclude_none=True)
+        assert data == {"name": "test_window"}
 
 
 class TestProjectConfig:
@@ -100,45 +100,45 @@ class TestProjectConfig:
         """正常なプロジェクト."""
         project = ProjectConfig(
             name="my-project",
-            tmux_sessions=[
-                SessionConfig(name="session1"),
-                SessionConfig(name="session2"),
+            tmux_windows=[
+                WindowConfig(name="window1"),
+                WindowConfig(name="window2"),
             ],
         )
         assert project.name == "my-project"
-        assert len(project.tmux_sessions) == 2
+        assert len(project.tmux_windows) == 2
 
-    def test_duplicate_session_names_raise_error(self):
-        """セッション名重複はエラー."""
+    def test_duplicate_window_names_raise_error(self):
+        """ウィンドウ名重複はエラー."""
         with pytest.raises(ValidationError):
             ProjectConfig(
                 name="my-project",
-                tmux_sessions=[
-                    SessionConfig(name="same"),
-                    SessionConfig(name="same"),
+                tmux_windows=[
+                    WindowConfig(name="same"),
+                    WindowConfig(name="same"),
                 ],
             )
 
-    def test_empty_sessions_list(self):
-        """セッションなしも許可."""
+    def test_empty_windows_list(self):
+        """ウィンドウなしも許可."""
         project = ProjectConfig(name="empty-project")
-        assert project.tmux_sessions == []
+        assert project.tmux_windows == []
 
     def test_json_serialization(self):
         """JSON変換."""
         project = ProjectConfig(
             name="test-project",
-            tmux_sessions=[
-                SessionConfig(
-                    name="session1", window_size=WindowSize(columns=200, lines=60)
+            tmux_windows=[
+                WindowConfig(
+                    name="window1", window_size=WindowSize(columns=200, lines=60)
                 )
             ],
         )
         data = project.model_dump(exclude_none=True)
         assert data == {
             "name": "test-project",
-            "tmux_sessions": [
-                {"name": "session1", "window_size": {"columns": 200, "lines": 60}}
+            "tmux_windows": [
+                {"name": "window1", "window_size": {"columns": 200, "lines": 60}}
             ],
         }
 
@@ -151,7 +151,7 @@ class TestConfig:
         config = Config(
             projects={
                 "project1": ProjectConfig(
-                    name="project1", tmux_sessions=[SessionConfig(name="s1")]
+                    name="project1", tmux_windows=[WindowConfig(name="w1")]
                 )
             }
         )
@@ -175,7 +175,7 @@ class TestConfig:
             projects={
                 "test-project": ProjectConfig(
                     name="test-project",
-                    tmux_sessions=[SessionConfig(name="s1")],
+                    tmux_windows=[WindowConfig(name="w1")],
                 )
             }
         )
@@ -184,14 +184,14 @@ class TestConfig:
         assert data["projects"]["test-project"]["name"] == "test-project"
 
     def test_json_deserialization(self):
-        """JSONからの復元."""
+        """JSONからの復元（tmux_windows形式）."""
         data = {
             "projects": {
                 "test-project": {
                     "name": "test-project",
-                    "tmux_sessions": [
+                    "tmux_windows": [
                         {
-                            "name": "session1",
+                            "name": "window1",
                             "window_size": {"columns": 200, "lines": 60},
                         }
                     ],
@@ -200,8 +200,8 @@ class TestConfig:
         }
         config = Config.model_validate(data)
         assert "test-project" in config.projects
-        assert len(config.projects["test-project"].tmux_sessions) == 1
+        assert len(config.projects["test-project"].tmux_windows) == 1
         assert (
-            config.projects["test-project"].tmux_sessions[0].window_size.columns
+            config.projects["test-project"].tmux_windows[0].window_size.columns
             == 200
         )

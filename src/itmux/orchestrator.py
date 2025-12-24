@@ -6,7 +6,7 @@ from typing import Optional
 
 from .config import ConfigManager
 from .iterm2_bridge import ITerm2Bridge
-from .models import SessionConfig
+from .models import WindowConfig
 
 
 class ProjectOrchestrator:
@@ -36,22 +36,22 @@ class ProjectOrchestrator:
         )
         return result.returncode == 0
 
-    def _generate_session_name(self, project_name: str) -> str:
-        """セッション名を自動生成.
+    def _generate_window_name(self, project_name: str) -> str:
+        """ウィンドウ名を自動生成.
 
         Args:
             project_name: プロジェクト名
 
         Returns:
-            str: 生成されたセッション名（例: "project-1", "project-2"）
+            str: 生成されたウィンドウ名（例: "window-1", "window-2"）
         """
         project = self.config.get_project(project_name)
-        existing_sessions = {s.name for s in project.tmux_sessions}
+        existing_windows = {w.name for w in project.tmux_windows}
 
         counter = 1
         while True:
-            candidate = f"{project_name}-{counter}"
-            if candidate not in existing_sessions:
+            candidate = f"window-{counter}"
+            if candidate not in existing_windows:
                 return candidate
             counter += 1
 
@@ -62,7 +62,7 @@ class ProjectOrchestrator:
             dict: プロジェクト情報の辞書
                 {
                     "project-name": {
-                        "sessions": ["session1", "session2"],
+                        "windows": ["window1", "window2"],
                         "count": 2
                     }
                 }
@@ -71,8 +71,8 @@ class ProjectOrchestrator:
         for project_name in self.config.list_projects():
             project = self.config.get_project(project_name)
             result[project_name] = {
-                "sessions": [s.name for s in project.tmux_sessions],
-                "count": len(project.tmux_sessions),
+                "windows": [w.name for w in project.tmux_windows],
+                "count": len(project.tmux_windows),
             }
         return result
 
@@ -89,19 +89,8 @@ class ProjectOrchestrator:
         # 1. プロジェクト設定取得
         project = self.config.get_project(project_name)
 
-        # 2. 各セッションをアタッチ
-        for session_config in project.tmux_sessions:
-            # 2.1 tmuxセッション存在確認
-            if not self._tmux_has_session(session_config.name):
-                # 存在しない場合は新規作成
-                await self.bridge.add_session(project_name, session_config.name)
-            else:
-                # 存在する場合はアタッチ
-                await self.bridge.attach_session(
-                    project_name,
-                    session_config.name,
-                    session_config.window_size,
-                )
+        # 2. プロジェクトのtmuxウィンドウを開く
+        await self.bridge.open_project_windows(project_name, project.tmux_windows)
 
         # 3. 環境変数設定
         os.environ["ITMUX_PROJECT"] = project_name
@@ -125,16 +114,16 @@ class ProjectOrchestrator:
         windows = await self.bridge.find_windows_by_project(project_name)
 
         # 3. 現在の状態を取得（自動同期用）
-        sessions = []
+        windows_config = []
         for window in windows:
             session_name = await window.async_get_variable("user.tmux_session")
             # ウィンドウサイズ取得（オプション）
             # TODO: 将来的にウィンドウサイズの保存を実装
-            sessions.append(SessionConfig(name=session_name))
+            windows_config.append(WindowConfig(name=session_name))
 
         # 4. 設定を更新
-        if sessions:
-            self.config.update_project(project_name, sessions)
+        if windows_config:
+            self.config.update_project(project_name, windows_config)
 
         # 5. 各ウィンドウをデタッチ
         for window in windows:
@@ -145,13 +134,13 @@ class ProjectOrchestrator:
             del os.environ["ITMUX_PROJECT"]
 
     async def add(
-        self, project_name: Optional[str] = None, session_name: Optional[str] = None
+        self, project_name: Optional[str] = None, window_name: Optional[str] = None
     ) -> None:
-        """プロジェクトに新規セッション追加.
+        """プロジェクトに新規ウィンドウ追加.
 
         Args:
             project_name: プロジェクト名（省略時は環境変数から取得）
-            session_name: セッション名（省略時は自動生成）
+            window_name: ウィンドウ名（省略時は自動生成）
 
         Raises:
             ProjectNotFoundError: プロジェクトが存在しない
@@ -162,12 +151,13 @@ class ProjectOrchestrator:
             if project_name is None:
                 raise ValueError("No project specified and ITMUX_PROJECT not set")
 
-        # 2. セッション名決定
-        if session_name is None:
-            session_name = self._generate_session_name(project_name)
+        # 2. ウィンドウ名決定
+        if window_name is None:
+            window_name = self._generate_window_name(project_name)
 
-        # 3. 新規セッション作成
-        await self.bridge.add_session(project_name, session_name)
+        # 3. 新規ウィンドウ作成（1ウィンドウ版のopen）
+        window_config = WindowConfig(name=window_name)
+        await self.bridge.open_project_windows(project_name, [window_config])
 
         # 4. 設定に追加
-        self.config.add_session(project_name, SessionConfig(name=session_name))
+        self.config.add_window(project_name, window_config)

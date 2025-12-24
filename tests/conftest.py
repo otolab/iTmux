@@ -4,7 +4,7 @@ import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from itmux.models import WindowSize, SessionConfig, ProjectConfig
+from itmux.models import WindowSize, WindowConfig, ProjectConfig
 
 
 @pytest.fixture
@@ -14,9 +14,9 @@ def sample_window_size():
 
 
 @pytest.fixture
-def sample_session():
-    """サンプルセッション."""
-    return SessionConfig(name="test_session")
+def sample_window():
+    """サンプルウィンドウ."""
+    return WindowConfig(name="test_window")
 
 
 # iTerm2 API モックフィクスチャ
@@ -83,7 +83,7 @@ def mock_config_manager():
     """ConfigManagerのモック."""
     config = MagicMock()
     config.get_project.return_value = ProjectConfig(
-        name="test-project", tmux_sessions=[SessionConfig(name="session1")]
+        name="test-project", tmux_windows=[WindowConfig(name="window1")]
     )
     config.list_projects.return_value = ["test-project"]
     return config
