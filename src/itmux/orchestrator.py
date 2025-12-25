@@ -38,21 +38,39 @@ class ProjectOrchestrator:
         return result.returncode == 0
 
     def _resolve_project_name(self, project_name: Optional[str]) -> str:
-        """プロジェクト名を解決（引数 or 環境変数）.
+        """プロジェクト名を解決（引数 or tmux session or 環境変数）.
 
         Args:
-            project_name: プロジェクト名（Noneの場合は環境変数から取得）
+            project_name: プロジェクト名（Noneの場合は自動検出）
 
         Returns:
             str: 解決されたプロジェクト名
 
         Raises:
-            ValueError: プロジェクト名が指定されておらず、環境変数も未設定
+            ValueError: プロジェクト名が指定されておらず、tmuxセッションからも環境変数からも取得できない
         """
         if project_name is None:
+            # 1. tmux内で実行されている場合、session名を取得
+            if os.environ.get("TMUX"):
+                try:
+                    result = subprocess.run(
+                        ["tmux", "display-message", "-p", "#{session_name}"],
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    project_name = result.stdout.strip()
+                    if project_name:
+                        return project_name
+                except Exception:
+                    # tmuxコマンド失敗時は次の方法を試す
+                    pass
+
+            # 2. 環境変数から取得（後方互換性）
             project_name = os.environ.get("ITMUX_PROJECT")
             if project_name is None:
                 raise ValueError("No project specified and ITMUX_PROJECT not set")
+
         return project_name
 
     def _generate_window_name(self, project_name: str) -> str:
