@@ -28,6 +28,36 @@ async def get_orchestrator() -> ProjectOrchestrator:
     return ProjectOrchestrator(config_manager, bridge)
 
 
+def run_async_command(coro, success_message: str, handle_value_error: bool = False):
+    """非同期コマンドを実行し、共通のエラーハンドリングを適用.
+
+    Args:
+        coro: 実行する非同期コルーチン
+        success_message: 成功時のメッセージ
+        handle_value_error: ValueErrorをハンドリングするか
+    """
+    try:
+        asyncio.run(coro)
+        click.echo(success_message)
+    except ValueError as e:
+        if handle_value_error:
+            click.echo(f"✗ Error: {e}", err=True)
+            sys.exit(1)
+        raise
+    except ProjectNotFoundError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ITerm2Error as e:
+        click.echo(f"✗ iTerm2 Error: {e}", err=True)
+        sys.exit(1)
+    except ConfigError as e:
+        click.echo(f"✗ Config Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"✗ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
 @click.group()
 @click.version_option()
 def main():
@@ -43,18 +73,7 @@ def open(project: str):
         orchestrator = await get_orchestrator()
         await orchestrator.open(project)
 
-    try:
-        asyncio.run(_open())
-        click.echo(f"✓ Opened project: {project}")
-    except ProjectNotFoundError as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except ITerm2Error as e:
-        click.echo(f"✗ iTerm2 Error: {e}", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"✗ Unexpected error: {e}", err=True)
-        sys.exit(1)
+    run_async_command(_open(), f"✓ Opened project: {project}")
 
 
 @main.command()
@@ -65,21 +84,7 @@ def sync(project: str | None):
         orchestrator = await get_orchestrator()
         await orchestrator.sync(project)
 
-    try:
-        asyncio.run(_sync())
-        click.echo(f"✓ Synced project: {project or 'current'}")
-    except ValueError as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except ProjectNotFoundError as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except ITerm2Error as e:
-        click.echo(f"✗ iTerm2 Error: {e}", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"✗ Unexpected error: {e}", err=True)
-        sys.exit(1)
+    run_async_command(_sync(), f"✓ Synced project: {project or 'current'}", handle_value_error=True)
 
 
 @main.command()
@@ -90,21 +95,7 @@ def close(project: str | None):
         orchestrator = await get_orchestrator()
         await orchestrator.close(project)
 
-    try:
-        asyncio.run(_close())
-        click.echo(f"✓ Closed project: {project or 'current'}")
-    except ValueError as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except ProjectNotFoundError as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except ITerm2Error as e:
-        click.echo(f"✗ iTerm2 Error: {e}", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"✗ Unexpected error: {e}", err=True)
-        sys.exit(1)
+    run_async_command(_close(), f"✓ Closed project: {project or 'current'}", handle_value_error=True)
 
 
 @main.command()
@@ -116,21 +107,7 @@ def add(project: str | None, window: str | None):
         orchestrator = await get_orchestrator()
         await orchestrator.add(project, window)
 
-    try:
-        asyncio.run(_add())
-        click.echo(f"✓ Added window to project: {project or 'current'}")
-    except ValueError as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except ProjectNotFoundError as e:
-        click.echo(f"✗ Error: {e}", err=True)
-        sys.exit(1)
-    except ITerm2Error as e:
-        click.echo(f"✗ iTerm2 Error: {e}", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"✗ Unexpected error: {e}", err=True)
-        sys.exit(1)
+    run_async_command(_add(), f"✓ Added window to project: {project or 'current'}", handle_value_error=True)
 
 
 @main.command()

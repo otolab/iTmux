@@ -36,6 +36,24 @@ class ProjectOrchestrator:
         )
         return result.returncode == 0
 
+    def _resolve_project_name(self, project_name: Optional[str]) -> str:
+        """プロジェクト名を解決（引数 or 環境変数）.
+
+        Args:
+            project_name: プロジェクト名（Noneの場合は環境変数から取得）
+
+        Returns:
+            str: 解決されたプロジェクト名
+
+        Raises:
+            ValueError: プロジェクト名が指定されておらず、環境変数も未設定
+        """
+        if project_name is None:
+            project_name = os.environ.get("ITMUX_PROJECT")
+            if project_name is None:
+                raise ValueError("No project specified and ITMUX_PROJECT not set")
+        return project_name
+
     def _generate_window_name(self, project_name: str) -> str:
         """ウィンドウ名を自動生成.
 
@@ -116,10 +134,7 @@ class ProjectOrchestrator:
             ProjectNotFoundError: プロジェクトが存在しない
         """
         # 1. プロジェクト名決定
-        if project_name is None:
-            project_name = os.environ.get("ITMUX_PROJECT")
-            if project_name is None:
-                raise ValueError("No project specified and ITMUX_PROJECT not set")
+        project_name = self._resolve_project_name(project_name)
 
         # 2. tmuxセッションが存在するかチェック
         if not self._tmux_has_session(project_name):
@@ -151,10 +166,7 @@ class ProjectOrchestrator:
             ProjectNotFoundError: プロジェクトが存在しない
         """
         # 1. プロジェクト名決定
-        if project_name is None:
-            project_name = os.environ.get("ITMUX_PROJECT")
-            if project_name is None:
-                raise ValueError("No project specified and ITMUX_PROJECT not set")
+        project_name = self._resolve_project_name(project_name)
 
         # 2. 同期
         await self.sync(project_name)
@@ -182,10 +194,7 @@ class ProjectOrchestrator:
             ProjectNotFoundError: プロジェクトが存在しない
         """
         # 1. プロジェクト名決定
-        if project_name is None:
-            project_name = os.environ.get("ITMUX_PROJECT")
-            if project_name is None:
-                raise ValueError("No project specified and ITMUX_PROJECT not set")
+        project_name = self._resolve_project_name(project_name)
 
         # 2. ウィンドウ名決定
         if window_name is None:

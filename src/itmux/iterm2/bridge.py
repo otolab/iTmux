@@ -230,8 +230,7 @@ class ITerm2Bridge:
             await tmux_conn.async_send_command(f"rename-window {window_name}")
 
             # iTerm2ウィンドウにタグ付け
-            await iterm_window.async_set_variable("user.projectID", project_name)
-            await iterm_window.async_set_variable("user.window_name", window_name)
+            await self.window_manager.tag_window(iterm_window, project_name, window_name)
 
             return iterm_window.window_id
 
@@ -325,8 +324,7 @@ class ITerm2Bridge:
                     await tmux_conn.async_send_command(f"rename-window {window_config.name}")
 
                     # iTerm2ウィンドウにタグ付け
-                    await iterm_window.async_set_variable("user.projectID", project_name)
-                    await iterm_window.async_set_variable("user.window_name", window_config.name)
+                    await self.window_manager.tag_window(iterm_window, project_name, window_config.name)
 
                     # ウィンドウサイズ復元
                     if window_config.window_size:

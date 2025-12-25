@@ -15,6 +15,22 @@ class WindowManager:
         """
         self.app = app
 
+    async def tag_window(
+        self,
+        window: iterm2.Window,
+        project_name: str,
+        window_name: str
+    ) -> None:
+        """iTerm2ウィンドウにプロジェクトタグを設定.
+
+        Args:
+            window: iTerm2ウィンドウ
+            project_name: プロジェクト名
+            window_name: ウィンドウ名
+        """
+        await window.async_set_variable("user.projectID", project_name)
+        await window.async_set_variable("user.window_name", window_name)
+
     async def tag_window_by_tmux_id(
         self,
         tmux_window_id: str,
@@ -33,8 +49,7 @@ class WindowManager:
         """
         for window in self.app.windows:
             if window.current_tab and window.current_tab.tmux_window_id == tmux_window_id:
-                await window.async_set_variable("user.projectID", project_name)
-                await window.async_set_variable("user.window_name", window_name)
+                await self.tag_window(window, project_name, window_name)
                 return window.window_id
         return None
 
