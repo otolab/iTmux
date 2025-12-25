@@ -347,6 +347,63 @@ class ITerm2Bridge:
         except Exception as e:
             raise ITerm2Error(f"Failed to get tmux windows: {e}") from e
 
+    async def setup_hooks(self, project_name: str, itmux_command: str = "itmux") -> None:
+        """プロジェクトのtmuxセッションにhookを設定して自動同期を有効化.
+
+        Args:
+            project_name: プロジェクト名
+            itmux_command: itmuxコマンドのパス（デフォルト: "itmux"）
+
+        Raises:
+            ITerm2Error: hook設定に失敗
+        """
+        try:
+            tmux_conn = await self.get_tmux_connection(project_name)
+
+            # run-shellを使って外部コマンドを実行
+            # window作成時のhook
+            await tmux_conn.async_send_command(
+                f"set-hook -t {project_name} after-new-window \"run-shell '{itmux_command} sync {project_name}'\""
+            )
+
+            # window削除時のhook
+            await tmux_conn.async_send_command(
+                f"set-hook -t {project_name} window-unlinked \"run-shell '{itmux_command} sync {project_name}'\""
+            )
+
+            # window名変更時のhook
+            await tmux_conn.async_send_command(
+                f"set-hook -t {project_name} after-rename-window \"run-shell '{itmux_command} sync {project_name}'\""
+            )
+        except Exception as e:
+            raise ITerm2Error(f"Failed to setup hooks: {e}") from e
+
+    async def remove_hooks(self, project_name: str) -> None:
+        """プロジェクトのtmuxセッションからhookを削除.
+
+        Args:
+            project_name: プロジェクト名
+
+        Raises:
+            ITerm2Error: hook削除に失敗
+        """
+        try:
+            tmux_conn = await self.get_tmux_connection(project_name)
+
+            # hookを削除（-u オプション）
+            await tmux_conn.async_send_command(
+                f"set-hook -u -t {project_name} after-new-window"
+            )
+            await tmux_conn.async_send_command(
+                f"set-hook -u -t {project_name} window-unlinked"
+            )
+            await tmux_conn.async_send_command(
+                f"set-hook -u -t {project_name} after-rename-window"
+            )
+        except Exception as e:
+            # hookが存在しない場合もエラーになるが、無視する
+            pass
+
     async def close_gateway(self, project_name: str) -> None:
         """プロジェクトのGatewayを明示的にクローズし、情報をクリア.
 

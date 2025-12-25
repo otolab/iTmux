@@ -59,6 +59,31 @@ def open(project: str):
 
 @main.command()
 @click.argument("project", required=False)
+def sync(project: str | None):
+    """Sync project configuration with current tmux session state."""
+    async def _sync():
+        orchestrator = await get_orchestrator()
+        await orchestrator.sync(project)
+
+    try:
+        asyncio.run(_sync())
+        click.echo(f"✓ Synced project: {project or 'current'}")
+    except ValueError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ProjectNotFoundError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ITerm2Error as e:
+        click.echo(f"✗ iTerm2 Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"✗ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("project", required=False)
 def close(project: str | None):
     """Close and detach a project window set."""
     async def _close():

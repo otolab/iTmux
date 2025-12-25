@@ -92,11 +92,19 @@ class ProjectOrchestrator:
         # 2. プロジェクトのtmuxウィンドウを開く
         await self.bridge.open_project_windows(project_name, project.tmux_windows)
 
-        # 3. 環境変数設定
+        # 3. hookを設定（自動同期）
+        # itmuxコマンドのパスを取得（scripts/itmuxまたはインストール済み）
+        import sys
+        from pathlib import Path
+        script_path = Path(__file__).parent.parent.parent / "scripts" / "itmux"
+        itmux_command = str(script_path) if script_path.exists() else "itmux"
+        await self.bridge.setup_hooks(project_name, itmux_command)
+
+        # 4. 環境変数設定
         os.environ["ITMUX_PROJECT"] = project_name
 
-    async def close(self, project_name: Optional[str] = None) -> None:
-        """プロジェクトを閉じる（自動同期）.
+    async def sync(self, project_name: Optional[str] = None) -> None:
+        """プロジェクトの状態を同期（tmuxセッション → config.json）.
 
         Args:
             project_name: プロジェクト名（省略時は環境変数から取得）
@@ -116,6 +124,27 @@ class ProjectOrchestrator:
         # 3. 設定を更新
         if windows_config:
             self.config.update_project(project_name, windows_config)
+
+    async def close(self, project_name: Optional[str] = None) -> None:
+        """プロジェクトを閉じる（自動同期）.
+
+        Args:
+            project_name: プロジェクト名（省略時は環境変数から取得）
+
+        Raises:
+            ProjectNotFoundError: プロジェクトが存在しない
+        """
+        # 1. プロジェクト名決定
+        if project_name is None:
+            project_name = os.environ.get("ITMUX_PROJECT")
+            if project_name is None:
+                raise ValueError("No project specified and ITMUX_PROJECT not set")
+
+        # 2. 同期
+        await self.sync(project_name)
+
+        # 3. hookを削除
+        await self.bridge.remove_hooks(project_name)
 
         # 4. セッションをデタッチ
         await self.bridge.detach_session(project_name)
