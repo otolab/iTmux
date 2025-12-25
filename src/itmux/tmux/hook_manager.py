@@ -28,20 +28,21 @@ class HookManager:
         current_path = os.environ.get("PATH", "")
         hook_command = f"PATH={current_path} {itmux_command} sync {project_name} 2>/dev/null || true"
 
-        # run-shellを使って外部コマンドを実行
+        # run-shell -b を使って外部コマンドをバックグラウンド実行
+        # -b: バックグラウンド実行（デッドロック防止）
         # window作成時のhook（セッションスコープ）
         await tmux_conn.async_send_command(
-            f"set-hook -t {project_name} after-new-window \"run-shell '{hook_command}'\""
+            f"set-hook -t {project_name} after-new-window \"run-shell -b '{hook_command}'\""
         )
 
         # window削除時のhook（セッションスコープ）
         await tmux_conn.async_send_command(
-            f"set-hook -t {project_name} window-unlinked \"run-shell '{hook_command}'\""
+            f"set-hook -t {project_name} window-unlinked \"run-shell -b '{hook_command}'\""
         )
 
         # window名変更時のhook（セッションスコープ）
         await tmux_conn.async_send_command(
-            f"set-hook -t {project_name} after-rename-window \"run-shell '{hook_command}'\""
+            f"set-hook -t {project_name} after-rename-window \"run-shell -b '{hook_command}'\""
         )
 
         # session終了時のhook（グローバルスコープ）
@@ -49,7 +50,7 @@ class HookManager:
         # 既にセッションが終了しているため、sync内でセッション存在チェックが走り、
         # プロジェクトが自動削除される
         await tmux_conn.async_send_command(
-            f"set-hook -ag session-closed \"run-shell '{hook_command}'\""
+            f"set-hook -ag session-closed \"run-shell -b '{hook_command}'\""
         )
 
     async def remove_hooks(
