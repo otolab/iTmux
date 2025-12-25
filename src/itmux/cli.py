@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .config import ConfigManager, DEFAULT_CONFIG_PATH
 from .orchestrator import ProjectOrchestrator
-from .iterm2_bridge import ITerm2Bridge
+from .iterm2 import ITerm2Bridge
 from .exceptions import ProjectNotFoundError, ITerm2Error, ConfigError
 
 

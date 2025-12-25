@@ -5,7 +5,7 @@ import subprocess
 from typing import Optional
 
 from .config import ConfigManager
-from .iterm2_bridge import ITerm2Bridge
+from .iterm2 import ITerm2Bridge
 from .models import WindowConfig
 
 
