@@ -110,25 +110,17 @@ class ProjectOrchestrator:
             if project_name is None:
                 raise ValueError("No project specified and ITMUX_PROJECT not set")
 
-        # 2. プロジェクトウィンドウを検索
-        windows = await self.bridge.find_windows_by_project(project_name)
+        # 2. tmuxセッションから実際のウィンドウリストを取得
+        windows_config = await self.bridge.get_tmux_windows(project_name)
 
-        # 3. 現在の状態を取得（自動同期用）
-        windows_config = []
-        for window in windows:
-            window_name = await window.async_get_variable("user.window_name")
-            # ウィンドウサイズ取得（オプション）
-            # TODO: 将来的にウィンドウサイズの保存を実装
-            windows_config.append(WindowConfig(name=window_name))
-
-        # 4. 設定を更新
+        # 3. 設定を更新
         if windows_config:
             self.config.update_project(project_name, windows_config)
 
-        # 5. セッションをデタッチ
+        # 4. セッションをデタッチ
         await self.bridge.detach_session(project_name)
 
-        # 6. 環境変数クリア
+        # 5. 環境変数クリア
         if "ITMUX_PROJECT" in os.environ:
             del os.environ["ITMUX_PROJECT"]
 

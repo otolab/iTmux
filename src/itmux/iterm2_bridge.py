@@ -324,6 +324,29 @@ class ITerm2Bridge:
 
         return tmux_conn
 
+    async def get_tmux_windows(self, project_name: str) -> list[WindowConfig]:
+        """プロジェクトのtmuxセッションから実際のウィンドウリストを取得.
+
+        iTerm2 Windowが閉じられていても、tmuxセッションに存在するウィンドウを全て取得します。
+
+        Args:
+            project_name: プロジェクト名
+
+        Returns:
+            list[WindowConfig]: ウィンドウ設定のリスト
+
+        Raises:
+            ITerm2Error: tmuxコマンド実行に失敗
+        """
+        try:
+            tmux_conn = await self.get_tmux_connection(project_name)
+            result = await tmux_conn.async_send_command("list-windows -F '#{window_name}'")
+            window_names = result.strip().split('\n') if result.strip() else []
+
+            return [WindowConfig(name=name) for name in window_names]
+        except Exception as e:
+            raise ITerm2Error(f"Failed to get tmux windows: {e}") from e
+
     async def close_gateway(self, project_name: str) -> None:
         """プロジェクトのGatewayを明示的にクローズし、情報をクリア.
 
