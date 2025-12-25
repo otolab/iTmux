@@ -144,9 +144,6 @@ class ProjectOrchestrator:
             except Exception:
                 # プロジェクトが既に存在しない場合は無視
                 pass
-
-            # gateway情報もクリア
-            self.bridge._clear_gateway_info(project_name)
             return
 
         # 3. tmuxセッションから実際のウィンドウリストを取得

@@ -1,7 +1,6 @@
 """iTerm2 Python API integration layer."""
 
 import asyncio
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -9,7 +8,6 @@ import iterm2
 
 from ..models import WindowSize, WindowConfig
 from ..exceptions import ITerm2Error
-from ..gateway.gateway_manager import GatewayManager
 from ..tmux.session_manager import SessionManager
 from ..tmux.hook_manager import HookManager
 from .window_manager import WindowManager
@@ -32,8 +30,7 @@ class ITerm2Bridge:
         self.app = app
 
         # 各種マネージャーを初期化
-        self.gateway_manager = GatewayManager()
-        self.session_manager = SessionManager(connection, self.gateway_manager)
+        self.session_manager = SessionManager(connection)
         self.hook_manager = HookManager()
         self.window_manager = WindowManager(app)
 
@@ -92,7 +89,7 @@ class ITerm2Bridge:
             raise ITerm2Error(f"Failed to detach session: {e}") from e
 
     async def connect_to_session(self, project_name: str, first_window_name: str = "default") -> None:
-        """tmux Control Modeセッションに接続してGateway情報を保存.
+        """tmux Control Modeセッションに接続.
 
         Args:
             project_name: プロジェクト名
@@ -102,7 +99,7 @@ class ITerm2Bridge:
             ITerm2Error: 接続に失敗
         """
         try:
-            # 1. Control Modeでtmuxセッションに接続
+            # Control Modeでtmuxセッションに接続
             # -A: セッションが存在しない場合は作成、存在する場合はアタッチ
             # -s: セッション名
             # -n: 最初のウィンドウ名
@@ -114,19 +111,8 @@ class ITerm2Bridge:
             if not gateway:
                 raise ITerm2Error("Failed to create gateway window")
 
-            # 4. TmuxConnection取得（少し待機してから）
+            # TmuxConnection確立を待つ
             await asyncio.sleep(1.0)
-            tmux_conns = await iterm2.async_get_tmux_connections(self.connection)
-            if not tmux_conns:
-                raise ITerm2Error("Failed to get tmux connection")
-            tmux_conn = tmux_conns[-1]  # 最新の接続
-
-            # 5. 情報を保存
-            self.gateway_manager.save(project_name, {
-                "connection_id": tmux_conn.connection_id,
-                "session_name": project_name,
-                "created_at": datetime.now().isoformat()
-            })
 
         except Exception as e:
             raise ITerm2Error(f"Failed to connect to session: {e}") from e
@@ -186,25 +172,6 @@ class ITerm2Bridge:
             await self.hook_manager.remove_hooks(tmux_conn, project_name)
         except Exception:
             pass
-
-    def _clear_gateway_info(self, project_name: str) -> None:
-        """プロジェクトのGateway情報をクリア.
-
-        Args:
-            project_name: プロジェクト名
-        """
-        self.gateway_manager.clear(project_name)
-
-    async def get_gateway_status(self, project_name: str) -> Optional[dict]:
-        """プロジェクトのGateway情報を取得.
-
-        Args:
-            project_name: プロジェクト名
-
-        Returns:
-            Gateway情報の辞書、存在しない場合はNone
-        """
-        return self.gateway_manager.load(project_name)
 
     async def add_window(self, project_name: str, window_name: str) -> str:
         """既存プロジェクトに新しいウィンドウを追加.

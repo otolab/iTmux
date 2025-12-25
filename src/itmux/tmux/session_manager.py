@@ -2,27 +2,24 @@
 
 import iterm2
 from ..models import WindowConfig
-from ..gateway.gateway_manager import GatewayManager
 from ..exceptions import ITerm2Error
 
 
 class SessionManager:
     """tmuxセッションの管理を担当するクラス."""
 
-    def __init__(self, connection: iterm2.Connection, gateway_manager: GatewayManager):
+    def __init__(self, connection: iterm2.Connection):
         """Initialize SessionManager.
 
         Args:
             connection: iTerm2 Connection
-            gateway_manager: GatewayManager instance
         """
         self.connection = connection
-        self.gateway_manager = gateway_manager
 
     async def get_tmux_connection(self, project_name: str) -> iterm2.TmuxConnection:
         """プロジェクトのTmuxConnectionを取得.
 
-        gateway情報から connection_id を使って TmuxConnection を都度取得します（キャッシュしません）。
+        tmuxコマンドでsession nameを確認しながらTmuxConnectionを都度検索します（キャッシュしません）。
 
         Args:
             project_name: プロジェクト名
@@ -33,20 +30,23 @@ class SessionManager:
         Raises:
             ITerm2Error: TmuxConnection取得に失敗
         """
-        # gateway情報からconnection_idを取得
-        gateway_info = self.gateway_manager.load(project_name)
-        if not gateway_info:
-            raise ITerm2Error(f"No gateway info found for project: {project_name}")
+        # 全てのTmuxConnectionを取得
+        tmux_conns = await iterm2.async_get_tmux_connections(self.connection)
 
-        # connection IDでTmuxConnectionを取得
-        tmux_conn = await iterm2.async_get_tmux_connection_by_connection_id(
-            self.connection, gateway_info["connection_id"]
-        )
+        # 各connectionのsession nameを確認
+        for conn in tmux_conns:
+            try:
+                # tmuxコマンドでsession nameを取得
+                result = await conn.async_send_command("display-message -p '#{session_name}'")
+                session_name = result.strip()
 
-        if not tmux_conn:
-            raise ITerm2Error(f"TmuxConnection not found for project: {project_name}")
+                if session_name == project_name:
+                    return conn
+            except Exception:
+                # このconnectionでコマンド実行に失敗した場合は次へ
+                continue
 
-        return tmux_conn
+        raise ITerm2Error(f"TmuxConnection not found for project: {project_name}")
 
     async def get_tmux_windows(self, project_name: str) -> list[WindowConfig]:
         """プロジェクトのtmuxセッションから実際のウィンドウリストを取得.
