@@ -154,29 +154,49 @@ class ITerm2Bridge:
                             window_ids.append(window.window_id)
                             break
 
-            # 6. 2つ目以降のウィンドウを作成（存在しない場合のみ）
+            # 6. 2つ目以降のウィンドウを作成/タグ付け
             for i, window_config in enumerate(window_configs[1:], start=1):
-                # 既に存在するウィンドウはスキップ
                 if window_config.name in existing_window_names:
-                    continue
+                    # 既存のウィンドウにタグ付け
+                    # tmuxコマンドでこのウィンドウのtmux_window_idを取得
+                    result = await tmux_conn.async_send_command("list-windows -F '#{window_name}:#{window_id}'")
+                    lines = result.strip().split('\n') if result.strip() else []
 
-                # 新しいウィンドウを作成
-                iterm_window = await tmux_conn.async_create_window()
+                    target_tmux_window_id = None
+                    for line in lines:
+                        parts = line.split(':')
+                        if len(parts) >= 2 and parts[0] == window_config.name:
+                            target_tmux_window_id = parts[1].lstrip('@')
+                            break
 
-                # ウィンドウ名を設定
-                await tmux_conn.async_send_command(
-                    f"rename-window {window_config.name}"
-                )
+                    if target_tmux_window_id:
+                        # このtmux_window_idを持つiTerm2 Windowを探してタグ付け
+                        for window in self.app.windows:
+                            if window.current_tab:
+                                tab_tmux_window_id = window.current_tab.tmux_window_id
+                                if tab_tmux_window_id == target_tmux_window_id:
+                                    await window.async_set_variable("user.projectID", project_name)
+                                    await window.async_set_variable("user.window_name", window_config.name)
+                                    window_ids.append(window.window_id)
+                                    break
+                else:
+                    # 新しいウィンドウを作成
+                    iterm_window = await tmux_conn.async_create_window()
 
-                # iTerm2ウィンドウにタグ付け
-                await iterm_window.async_set_variable("user.projectID", project_name)
-                await iterm_window.async_set_variable("user.window_name", window_config.name)
+                    # ウィンドウ名を設定
+                    await tmux_conn.async_send_command(
+                        f"rename-window {window_config.name}"
+                    )
 
-                # ウィンドウサイズ復元
-                if window_config.window_size:
-                    await self.set_window_size(iterm_window.window_id, window_config.window_size)
+                    # iTerm2ウィンドウにタグ付け
+                    await iterm_window.async_set_variable("user.projectID", project_name)
+                    await iterm_window.async_set_variable("user.window_name", window_config.name)
 
-                window_ids.append(iterm_window.window_id)
+                    # ウィンドウサイズ復元
+                    if window_config.window_size:
+                        await self.set_window_size(iterm_window.window_id, window_config.window_size)
+
+                    window_ids.append(iterm_window.window_id)
 
             return window_ids
 
