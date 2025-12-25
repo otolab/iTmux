@@ -159,6 +159,33 @@ class ConfigManager:
         # 自動保存
         self.save()
 
+    def create_project(
+        self, project_name: str, windows: Optional[list[WindowConfig]] = None
+    ) -> None:
+        """プロジェクトを新規作成.
+
+        Args:
+            project_name: プロジェクト名
+            windows: ウィンドウリスト（省略時は空リスト）
+
+        Raises:
+            ConfigError: プロジェクトが既に存在する
+        """
+        if self._config is None:
+            self.load()
+
+        if project_name in self._config.projects:
+            raise ConfigError(f"Project '{project_name}' already exists")
+
+        # プロジェクト作成
+        self._config.projects[project_name] = ProjectConfig(
+            name=project_name,
+            tmux_windows=windows or []
+        )
+
+        # 自動保存
+        self.save()
+
     def delete_project(self, project_name: str) -> None:
         """プロジェクトを削除.
 

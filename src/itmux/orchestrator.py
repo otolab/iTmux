@@ -7,6 +7,7 @@ from typing import Optional
 from .config import ConfigManager
 from .iterm2 import ITerm2Bridge
 from .models import WindowConfig
+from .exceptions import ProjectNotFoundError
 
 
 class ProjectOrchestrator:
@@ -97,15 +98,21 @@ class ProjectOrchestrator:
     async def open(self, project_name: str) -> None:
         """プロジェクトを開く.
 
+        プロジェクトが存在しない場合は自動作成します。
+
         Args:
             project_name: プロジェクト名
 
         Raises:
-            ProjectNotFoundError: プロジェクトが存在しない
             ITerm2Error: iTerm2操作が失敗
         """
-        # 1. プロジェクト設定取得
-        project = self.config.get_project(project_name)
+        # 1. プロジェクト設定取得（存在しない場合は作成）
+        try:
+            project = self.config.get_project(project_name)
+        except ProjectNotFoundError:
+            # プロジェクトが存在しない → 空のプロジェクトを作成
+            self.config.create_project(project_name, windows=[])
+            project = self.config.get_project(project_name)
 
         # 2. プロジェクトのtmuxウィンドウを開く
         await self.bridge.open_project_windows(project_name, project.tmux_windows)
