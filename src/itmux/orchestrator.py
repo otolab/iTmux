@@ -116,18 +116,17 @@ class ProjectOrchestrator:
         # 3. 現在の状態を取得（自動同期用）
         windows_config = []
         for window in windows:
-            session_name = await window.async_get_variable("user.tmux_session")
+            window_name = await window.async_get_variable("user.window_name")
             # ウィンドウサイズ取得（オプション）
             # TODO: 将来的にウィンドウサイズの保存を実装
-            windows_config.append(WindowConfig(name=session_name))
+            windows_config.append(WindowConfig(name=window_name))
 
         # 4. 設定を更新
         if windows_config:
             self.config.update_project(project_name, windows_config)
 
-        # 5. 各ウィンドウをデタッチ
-        for window in windows:
-            await self.bridge.detach_session(window.window_id)
+        # 5. セッションをデタッチ
+        await self.bridge.detach_session(project_name)
 
         # 6. 環境変数クリア
         if "ITMUX_PROJECT" in os.environ:
