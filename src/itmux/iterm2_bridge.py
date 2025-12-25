@@ -324,6 +324,38 @@ class ITerm2Bridge:
 
         return tmux_conn
 
+    async def add_window(self, project_name: str, window_name: str) -> str:
+        """既存プロジェクトに新しいウィンドウを追加.
+
+        Args:
+            project_name: プロジェクト名
+            window_name: ウィンドウ名
+
+        Returns:
+            str: 作成されたiTerm2ウィンドウID
+
+        Raises:
+            ITerm2Error: ウィンドウ作成に失敗
+        """
+        try:
+            # TmuxConnection を取得
+            tmux_conn = await self.get_tmux_connection(project_name)
+
+            # 新しいウィンドウを作成（openと同じ方法）
+            iterm_window = await tmux_conn.async_create_window()
+
+            # ウィンドウ名を設定
+            await tmux_conn.async_send_command(f"rename-window {window_name}")
+
+            # iTerm2ウィンドウにタグ付け
+            await iterm_window.async_set_variable("user.projectID", project_name)
+            await iterm_window.async_set_variable("user.window_name", window_name)
+
+            return iterm_window.window_id
+
+        except Exception as e:
+            raise ITerm2Error(f"Failed to add window: {e}") from e
+
     async def get_tmux_windows(self, project_name: str) -> list[WindowConfig]:
         """プロジェクトのtmuxセッションから実際のウィンドウリストを取得.
 
@@ -357,23 +389,30 @@ class ITerm2Bridge:
         Raises:
             ITerm2Error: hook設定に失敗
         """
+        import os
+
         try:
             tmux_conn = await self.get_tmux_connection(project_name)
+
+            # hookから実行されるコマンドにPATHを含める
+            # uvコマンドが見つかるように環境変数を設定
+            current_path = os.environ.get("PATH", "")
+            hook_command = f"PATH={current_path} {itmux_command} sync {project_name} 2>/dev/null || true"
 
             # run-shellを使って外部コマンドを実行
             # window作成時のhook（セッションスコープ）
             await tmux_conn.async_send_command(
-                f"set-hook -t {project_name} after-new-window \"run-shell '{itmux_command} sync {project_name}'\""
+                f"set-hook -t {project_name} after-new-window \"run-shell '{hook_command}'\""
             )
 
             # window削除時のhook（セッションスコープ）
             await tmux_conn.async_send_command(
-                f"set-hook -t {project_name} window-unlinked \"run-shell '{itmux_command} sync {project_name}'\""
+                f"set-hook -t {project_name} window-unlinked \"run-shell '{hook_command}'\""
             )
 
             # window名変更時のhook（セッションスコープ）
             await tmux_conn.async_send_command(
-                f"set-hook -t {project_name} after-rename-window \"run-shell '{itmux_command} sync {project_name}'\""
+                f"set-hook -t {project_name} after-rename-window \"run-shell '{hook_command}'\""
             )
 
             # session終了時のhook（グローバルスコープ）
@@ -381,7 +420,7 @@ class ITerm2Bridge:
             # 既にセッションが終了しているため、sync内でセッション存在チェックが走り、
             # プロジェクトが自動削除される
             await tmux_conn.async_send_command(
-                f"set-hook -ag session-closed \"run-shell '{itmux_command} sync {project_name} 2>/dev/null || true'\""
+                f"set-hook -ag session-closed \"run-shell '{hook_command}'\""
             )
         except Exception as e:
             raise ITerm2Error(f"Failed to setup hooks: {e}") from e

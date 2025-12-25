@@ -191,9 +191,9 @@ class ProjectOrchestrator:
         if window_name is None:
             window_name = self._generate_window_name(project_name)
 
-        # 3. 新規ウィンドウ作成（1ウィンドウ版のopen）
-        window_config = WindowConfig(name=window_name)
-        await self.bridge.open_project_windows(project_name, [window_config])
+        # 3. 新規ウィンドウ作成
+        await self.bridge.add_window(project_name, window_name)
 
         # 4. 設定に追加
+        window_config = WindowConfig(name=window_name)
         self.config.add_window(project_name, window_config)
