@@ -361,19 +361,27 @@ class ITerm2Bridge:
             tmux_conn = await self.get_tmux_connection(project_name)
 
             # run-shellを使って外部コマンドを実行
-            # window作成時のhook
+            # window作成時のhook（セッションスコープ）
             await tmux_conn.async_send_command(
                 f"set-hook -t {project_name} after-new-window \"run-shell '{itmux_command} sync {project_name}'\""
             )
 
-            # window削除時のhook
+            # window削除時のhook（セッションスコープ）
             await tmux_conn.async_send_command(
                 f"set-hook -t {project_name} window-unlinked \"run-shell '{itmux_command} sync {project_name}'\""
             )
 
-            # window名変更時のhook
+            # window名変更時のhook（セッションスコープ）
             await tmux_conn.async_send_command(
                 f"set-hook -t {project_name} after-rename-window \"run-shell '{itmux_command} sync {project_name}'\""
+            )
+
+            # session終了時のhook（グローバルスコープ）
+            # シンプルに、このプロジェクトのsyncを実行
+            # 既にセッションが終了しているため、sync内でセッション存在チェックが走り、
+            # プロジェクトが自動削除される
+            await tmux_conn.async_send_command(
+                f"set-hook -ag session-closed \"run-shell '{itmux_command} sync {project_name} 2>/dev/null || true'\""
             )
         except Exception as e:
             raise ITerm2Error(f"Failed to setup hooks: {e}") from e
@@ -384,13 +392,12 @@ class ITerm2Bridge:
         Args:
             project_name: プロジェクト名
 
-        Raises:
-            ITerm2Error: hook削除に失敗
+        注意: グローバルsession-closedフックは削除しない（他のプロジェクトも使用）
         """
         try:
             tmux_conn = await self.get_tmux_connection(project_name)
 
-            # hookを削除（-u オプション）
+            # セッションスコープのhookを削除（-u オプション）
             await tmux_conn.async_send_command(
                 f"set-hook -u -t {project_name} after-new-window"
             )
@@ -400,6 +407,7 @@ class ITerm2Bridge:
             await tmux_conn.async_send_command(
                 f"set-hook -u -t {project_name} after-rename-window"
             )
+            # session-closedはグローバルスコープなので削除しない
         except Exception as e:
             # hookが存在しない場合もエラーになるが、無視する
             pass

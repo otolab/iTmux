@@ -159,6 +159,27 @@ class ConfigManager:
         # 自動保存
         self.save()
 
+    def delete_project(self, project_name: str) -> None:
+        """プロジェクトを削除.
+
+        Args:
+            project_name: プロジェクト名
+
+        Raises:
+            ProjectNotFoundError: プロジェクトが存在しない
+        """
+        if self._config is None:
+            self.load()
+
+        if project_name not in self._config.projects:
+            raise ProjectNotFoundError(f"Project '{project_name}' not found")
+
+        # プロジェクト削除
+        del self._config.projects[project_name]
+
+        # 自動保存
+        self.save()
+
 
 # 便利関数（後方互換性・簡易API用）
 

@@ -106,6 +106,9 @@ class ProjectOrchestrator:
     async def sync(self, project_name: Optional[str] = None) -> None:
         """プロジェクトの状態を同期（tmuxセッション → config.json）.
 
+        tmuxセッションが存在しない場合（全ウィンドウ削除でセッション終了）、
+        プロジェクトをconfig.jsonから削除し、gateway情報もクリアします。
+
         Args:
             project_name: プロジェクト名（省略時は環境変数から取得）
 
@@ -118,10 +121,23 @@ class ProjectOrchestrator:
             if project_name is None:
                 raise ValueError("No project specified and ITMUX_PROJECT not set")
 
-        # 2. tmuxセッションから実際のウィンドウリストを取得
+        # 2. tmuxセッションが存在するかチェック
+        if not self._tmux_has_session(project_name):
+            # セッション終了 → プロジェクトを削除
+            try:
+                self.config.delete_project(project_name)
+            except Exception:
+                # プロジェクトが既に存在しない場合は無視
+                pass
+
+            # gateway情報もクリア
+            self.bridge._clear_gateway_info(project_name)
+            return
+
+        # 3. tmuxセッションから実際のウィンドウリストを取得
         windows_config = await self.bridge.get_tmux_windows(project_name)
 
-        # 3. 設定を更新
+        # 4. 設定を更新
         if windows_config:
             self.config.update_project(project_name, windows_config)
 
