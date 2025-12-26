@@ -389,6 +389,72 @@ iTerm2メニュー項目をプログラム実行：
 await app.async_select_menu_item("tmux.Detach")
 ```
 
+## tmux Hook管理
+
+### 概要
+
+tmuxのhook機能を使って、ウィンドウの作成・削除・名前変更を自動的にconfig.jsonに同期します。
+
+### Hook設定の仕様
+
+**重要な特性：**
+- hookはtmux sessionに設定される（TmuxConnection = session）
+- sessionが存在する限りhookは永続化される
+- `open`のたびに削除→再設定で冪等性を確保
+
+**設定されるhook：**
+
+```python
+# セッションスコープのhook
+set-hook -t {project_name} after-new-window "run-shell -b '{itmux_command} sync {project_name}'"
+set-hook -t {project_name} window-unlinked "run-shell -b '{itmux_command} sync {project_name}'"
+set-hook -t {project_name} after-rename-window "run-shell -b '{itmux_command} sync {project_name}'"
+
+# グローバルスコープのhook（append）
+set-hook -ag session-closed "run-shell -b '{itmux_command} sync {project_name}'"
+```
+
+### 冪等性の確保
+
+`open`時に既存hookを削除してから再設定：
+
+```python
+# 1. 既存hookを削除
+await bridge.remove_hooks(project_name)
+
+# 2. 新規設定
+await bridge.setup_hooks(project_name, itmux_command)
+```
+
+これにより：
+- 何回`open`しても、hookが重複しない
+- 存在しないhookを削除してもエラーは無視される（冪等性）
+
+### バックグラウンド実行
+
+`run-shell -b` フラグでデッドロック防止：
+
+```bash
+run-shell -b '{command}'  # バックグラウンド実行
+```
+
+`-b`なしの場合：
+- hookが同期的に実行される
+- `itmux sync`がTmuxConnectionを取得しようとする
+- 元の操作もTmuxConnectionを使用中
+- デッドロック発生
+
+### Hook削除
+
+`close`時にセッションスコープのhookを削除：
+
+```python
+set-hook -u -t {project_name} after-new-window
+set-hook -u -t {project_name} window-unlinked
+set-hook -u -t {project_name} after-rename-window
+# session-closedはグローバルなので削除しない
+```
+
 ## エラーハンドリング
 
 ### タイムアウト対策
