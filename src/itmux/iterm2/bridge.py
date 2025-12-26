@@ -193,6 +193,9 @@ class ITerm2Bridge:
             # 新しいウィンドウを作成（openと同じ方法）
             iterm_window = await tmux_conn.async_create_window()
 
+            # ウィンドウ作成を待つ
+            await asyncio.sleep(0.5)
+
             # ウィンドウ名を設定
             await tmux_conn.async_send_command(f"rename-window {window_name}")
 

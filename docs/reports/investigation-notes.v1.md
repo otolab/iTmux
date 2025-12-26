@@ -38,20 +38,29 @@ def _resolve_project_name(self, project_name: Optional[str]) -> str:
 - プロジェクト名の省略が可能に
 - 複数プロジェクトを開いていても、それぞれのsession内で正しく動作
 
-## 2. hookの永続性
+## 2. hookの永続性と重複問題 🔴 重要
+
+**問題（2025-12-26 発生）:**
+- `itmux add` 実行後、iTerm2ウィンドウで入力できなくなる
+- `itmux sync` が2回実行されている
+- hookが重複して設定されている可能性
 
 **疑問:**
 - tmuxセッションをdetachしたとき、hookは残るのか？
 - 次回attachしたとき、hookは再設定する必要があるのか？
+- `set-hook` は上書きか追加か？
 
 **現状:**
 - `open` のたびに `setup_hooks()` を呼んでいる（orchestrator.py:126）
-- 冪等性があるのか不明
+- 冪等性が不明
+- hookが重複設定されている可能性
 
 **調査項目:**
 - [ ] tmuxのhookがsessionに永続化される仕様を確認
 - [ ] detach/attach時のhook動作を検証
 - [ ] `set-hook` の冪等性を確認（同じhookを複数回設定したらどうなるか）
+- [ ] `set-hook -t` は上書きか追加か確認
+- [ ] hook重複時の動作を検証
 
 ## 3. session-closed hookの `-ag` オプション
 

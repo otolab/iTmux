@@ -26,7 +26,8 @@ class HookManager:
         # hookから実行されるコマンドにPATHを含める
         # uvコマンドが見つかるように環境変数を設定
         current_path = os.environ.get("PATH", "")
-        hook_command = f"PATH={current_path} {itmux_command} sync {project_name} 2>/dev/null || true"
+        # ログファイルに出力（エスケープを避けるためシンプルに）
+        hook_command = f"PATH={current_path} {itmux_command} sync {project_name} >> ~/.itmux/hook.log 2>&1 || true"
 
         # run-shell -b を使って外部コマンドをバックグラウンド実行
         # -b: バックグラウンド実行（デッドロック防止）

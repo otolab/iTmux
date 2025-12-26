@@ -141,6 +141,8 @@ class ProjectOrchestrator:
         from pathlib import Path
         script_path = Path(__file__).parent.parent.parent / "scripts" / "itmux"
         itmux_command = str(script_path) if script_path.exists() else "itmux"
+        # 既存のhookを削除してから再設定（冪等性のため）
+        await self.bridge.remove_hooks(project_name)
         await self.bridge.setup_hooks(project_name, itmux_command)
 
         # 4. 環境変数設定
@@ -158,25 +160,36 @@ class ProjectOrchestrator:
         Raises:
             ProjectNotFoundError: プロジェクトが存在しない
         """
+        import sys
+        print(f"[sync] START pid={os.getpid()}", file=sys.stderr)
+
         # 1. プロジェクト名決定
         project_name = self._resolve_project_name(project_name)
+        print(f"[sync] project={project_name}", file=sys.stderr)
 
         # 2. tmuxセッションが存在するかチェック
         if not self._tmux_has_session(project_name):
             # セッション終了 → プロジェクトを削除
+            print(f"[sync] Session not found, deleting project", file=sys.stderr)
             try:
                 self.config.delete_project(project_name)
             except Exception:
                 # プロジェクトが既に存在しない場合は無視
                 pass
+            print(f"[sync] END (session deleted)", file=sys.stderr)
             return
 
         # 3. tmuxセッションから実際のウィンドウリストを取得
+        print(f"[sync] Getting tmux windows", file=sys.stderr)
         windows_config = await self.bridge.get_tmux_windows(project_name)
+        print(f"[sync] Got {len(windows_config)} windows", file=sys.stderr)
 
         # 4. 設定を更新
         if windows_config:
             self.config.update_project(project_name, windows_config)
+            print(f"[sync] Config updated", file=sys.stderr)
+
+        print(f"[sync] END", file=sys.stderr)
 
     async def close(self, project_name: Optional[str] = None) -> None:
         """プロジェクトを閉じる（自動同期）.
