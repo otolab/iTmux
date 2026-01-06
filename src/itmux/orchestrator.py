@@ -207,6 +207,49 @@ class ProjectOrchestrator:
             }
         return result
 
+    def _is_tmux_running(self) -> bool:
+        """tmuxプロセスが起動しているかチェック.
+
+        Returns:
+            bool: tmuxが起動していればTrue
+        """
+        result = subprocess.run(
+            ["tmux", "ls"],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    def _restore_tmux_sessions(self) -> None:
+        """tmux-resurrectで保存されたセッションを復元.
+
+        tmux-resurrectのrestore.shを実行して全セッションを復元します。
+        """
+        import sys
+        from pathlib import Path
+
+        restore_script = Path.home() / ".tmux" / "plugins" / "tmux-resurrect" / "scripts" / "restore.sh"
+        if not restore_script.exists():
+            print("[restore] tmux-resurrect not installed, skipping restore", file=sys.stderr)
+            return
+
+        print("[restore] Restoring tmux sessions...", file=sys.stderr)
+        try:
+            result = subprocess.run(
+                [str(restore_script)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False
+            )
+            if result.returncode != 0:
+                print(f"[restore] Failed: {result.stderr}", file=sys.stderr)
+            else:
+                print("[restore] Sessions restored", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            print("[restore] Timeout", file=sys.stderr)
+        except Exception as e:
+            print(f"[restore] Error: {e}", file=sys.stderr)
+
     async def open(self, project_name: str, create_default: bool = True) -> None:
         """プロジェクトを開く.
 
@@ -219,6 +262,10 @@ class ProjectOrchestrator:
         Raises:
             ITerm2Error: iTerm2操作が失敗
         """
+        # 0. tmuxが起動していない場合、tmux-resurrectで復元
+        if not self._is_tmux_running():
+            self._restore_tmux_sessions()
+
         # 1. プロジェクト設定取得（存在しない場合は作成）
         try:
             project = self.config.get_project(project_name)
@@ -248,7 +295,8 @@ class ProjectOrchestrator:
         # 4. hookを設定（自動同期を有効化）
         # セッションスコープのhook（after-new-window等）は上書きされるため、
         # グローバルのsession-closedも上書きされるため、何回openしても多重登録されない
-        await self.bridge.setup_hooks(project_name)
+        itmux_command = os.environ.get("ITMUX_COMMAND", "itmux")
+        await self.bridge.setup_hooks(project_name, itmux_command=itmux_command)
 
         # 5. 環境変数設定
         os.environ["ITMUX_PROJECT"] = project_name

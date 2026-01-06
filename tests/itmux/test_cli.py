@@ -162,6 +162,27 @@ class TestClose:
         assert "✓ Closed project: current" in result.output
         mock_orchestrator.close.assert_called_once_with(None)
 
+    def test_close_with_environment_variable(self, monkeypatch):
+        """環境変数ITMUX_PROJECTを使ってプロジェクトを閉じる."""
+        runner = CliRunner()
+
+        # 環境変数を設定
+        monkeypatch.setenv("ITMUX_PROJECT", "test-project")
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.close = AsyncMock()
+
+        async def mock_get_orchestrator():
+            return mock_orchestrator
+
+        with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
+            result = runner.invoke(main, ["close"])
+
+        assert result.exit_code == 0
+        assert "✓ Closed project: current" in result.output
+        # 環境変数からプロジェクト名が取得され、closeに渡される（Noneが渡される）
+        mock_orchestrator.close.assert_called_once_with(None)
+
     def test_close_no_project_specified_error(self):
         """プロジェクト名未指定エラー."""
         runner = CliRunner()

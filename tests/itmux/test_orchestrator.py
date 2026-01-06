@@ -2,7 +2,7 @@
 
 import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from itmux.orchestrator import ProjectOrchestrator
 from itmux.models import WindowConfig, ProjectConfig, WindowSize
@@ -196,15 +196,25 @@ class TestOpen:
         )
 
     @pytest.mark.asyncio
+    @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
     async def test_open_project_not_found(
-        self, mock_config_manager, mock_iterm2_bridge, mock_environ
+        self, mock_is_tmux_running, mock_config_manager, mock_iterm2_bridge, mock_environ
     ):
-        """プロジェクトが存在しない."""
-        mock_config_manager.get_project.side_effect = ProjectNotFoundError(
-            "Project 'nonexistent' not found"
-        )
+        """プロジェクトが存在しない場合は自動作成される."""
+        # 最初のget_projectはProjectNotFoundErrorを発生
+        # その後create_projectが呼ばれ、2回目のget_projectは成功
+        mock_config_manager.get_project.side_effect = [
+            ProjectNotFoundError("Project 'nonexistent' not found"),
+            ProjectConfig(name="nonexistent", tmux_windows=[])
+        ]
+
+        # tmuxが起動していることをモック
+        mock_is_tmux_running.return_value = True
 
         orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
 
-        with pytest.raises(ProjectNotFoundError):
-            await orchestrator.open("nonexistent")
+        # エラーは発生せず、プロジェクトが自動作成される
+        await orchestrator.open("nonexistent")
+
+        # create_projectが呼ばれたことを確認
+        mock_config_manager.create_project.assert_called_once_with("nonexistent", windows=[])

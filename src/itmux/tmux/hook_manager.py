@@ -41,6 +41,13 @@ class HookManager:
             str: hookから実行するコマンド文字列
         """
         current_path = os.environ.get("PATH", "")
+        config_path = os.environ.get("ITMUX_CONFIG_PATH", "")
+
+        # 環境変数の設定（PATHは必須、ITMUX_CONFIG_PATHはあれば設定）
+        env_vars = f"PATH={current_path}"
+        if config_path:
+            env_vars += f" ITMUX_CONFIG_PATH={config_path}"
+
         commands = []
 
         if needs_sync:
@@ -54,7 +61,7 @@ class HookManager:
 
         # 複数コマンドを && で連結
         command = " && ".join(commands)
-        return f"PATH={current_path} {command} >> ~/.itmux/hook.log 2>&1 || true"
+        return f"{env_vars} {command} >> ~/.itmux/hook.log 2>&1 || true"
 
     @staticmethod
     def _build_sync_all_command(itmux_command: str = "itmux") -> str:
@@ -67,7 +74,14 @@ class HookManager:
             str: hookから実行するコマンド文字列
         """
         current_path = os.environ.get("PATH", "")
-        return f"PATH={current_path} {itmux_command} sync --all >> ~/.itmux/hook.log 2>&1 || true"
+        config_path = os.environ.get("ITMUX_CONFIG_PATH", "")
+
+        # 環境変数の設定
+        env_vars = f"PATH={current_path}"
+        if config_path:
+            env_vars += f" ITMUX_CONFIG_PATH={config_path}"
+
+        return f"{env_vars} {itmux_command} sync --all >> ~/.itmux/hook.log 2>&1 || true"
 
     @staticmethod
     def _check_resurrect_installed() -> bool:

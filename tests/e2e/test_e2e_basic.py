@@ -27,14 +27,12 @@ class TestE2EBasicFlow:
         )
         assert "e2e-test-project" in tmux_result.stdout
 
-        # ウィンドウを確認
-        tmux_windows = subprocess.run(
-            ["tmux", "list-windows", "-t", "e2e-test-project", "-F", "#{window_name}"],
-            capture_output=True,
-            text=True
-        )
-        assert "e2e_editor" in tmux_windows.stdout
-        assert "e2e_server" in tmux_windows.stdout
+        # ウィンドウを確認（user.window_nameベース = itmux listで確認）
+        # Note: tmux window_nameは使用しない（automatic-renameで動的に変わる）
+        result = cli_runner("list")
+        assert result.exit_code == 0
+        assert "e2e_editor" in result.output
+        assert "e2e_server" in result.output
 
         # 2. プロジェクト一覧を確認
         result = cli_runner("list")
@@ -48,13 +46,12 @@ class TestE2EBasicFlow:
         assert result.exit_code == 0
         assert "✓ Added window" in result.output
 
-        time.sleep(2)
-        tmux_windows = subprocess.run(
-            ["tmux", "list-windows", "-t", "e2e-test-project", "-F", "#{window_name}"],
-            capture_output=True,
-            text=True
-        )
-        assert "e2e_logs" in tmux_windows.stdout
+        # hookによるsync処理の完了を待つ（別プロセスなので時間がかかる）
+        time.sleep(5)
+        # ウィンドウを確認（user.window_nameベース = itmux listで確認）
+        result = cli_runner("list")
+        assert result.exit_code == 0
+        assert "e2e_logs" in result.output
 
         # 4. プロジェクトを閉じる
         result = cli_runner("close", "e2e-test-project")
@@ -91,13 +88,19 @@ class TestE2EBasicFlow:
         result = cli_runner("open", "e2e-test-project")
         assert result.exit_code == 0
 
-        # 新規ウィンドウが作成される
+        # 新規セッションとウィンドウが作成される
         time.sleep(2)
+        # セッション名はプロジェクト名（e2e-test-project）
         tmux_result = subprocess.run(
-            ["tmux", "has-session", "-t", "e2e_editor"],
+            ["tmux", "has-session", "-t", "e2e-test-project"],
             capture_output=True
         )
         assert tmux_result.returncode == 0
+
+        # ウィンドウを確認
+        result = cli_runner("list")
+        assert result.exit_code == 0
+        assert "e2e-test-project" in result.output
 
         # クリーンアップ
         cli_runner("close", "e2e-test-project")

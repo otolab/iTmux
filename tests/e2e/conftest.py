@@ -109,9 +109,21 @@ def cli_runner(temp_config_file, cleanup_tmux_sessions, monkeypatch):
     """CLIコマンド実行用のヘルパー."""
     import subprocess
     from pathlib import Path
+    import shutil
+
+    # uv run itmuxの絶対パスを取得
+    uv_path = shutil.which("uv")
+    if not uv_path:
+        pytest.skip("uv not found in PATH")
+
+    # プロジェクトルートを取得
+    project_root = Path(__file__).parent.parent.parent
+    itmux_command = f"{uv_path} run --directory {project_root} itmux"
 
     # 環境変数でconfig pathを上書き
     monkeypatch.setenv("ITMUX_CONFIG_PATH", str(temp_config_file))
+    # hookで使用するコマンドを指定
+    monkeypatch.setenv("ITMUX_COMMAND", itmux_command)
 
     # cli.pyでインポートされたDEFAULT_CONFIG_PATHもパッチ
     import itmux.cli
@@ -123,6 +135,7 @@ def cli_runner(temp_config_file, cleanup_tmux_sessions, monkeypatch):
         cmd = ["uv", "run", "itmux"] + list(args)
         env = os.environ.copy()
         env["ITMUX_CONFIG_PATH"] = str(temp_config_file)
+        env["ITMUX_COMMAND"] = itmux_command  # hookで使用するコマンド
 
         result = subprocess.run(
             cmd,
