@@ -218,9 +218,16 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Mode（`-CC`）を統合し、�
 6. config.jsonに保存
    config.update_project(project_name, windows)
 
-7. 完了
+7. tmux-resurrect保存（オプション）
+   if ~/.tmux/plugins/tmux-resurrect/scripts/save.sh exists:
+     # tmuxセッションの状態を保存（プロセス、ペイン、ディレクトリ等）
+     run save.sh
+   # tmux-continuumの代替として自動保存を実現
+
+8. 完了
    → config.jsonがtmuxの現在状態を反映
    → iTerm2 windowには一切触らない
+   → tmux-resurrectによるセッション状態も保存
 ```
 
 **重要な設計判断：**
@@ -596,6 +603,66 @@ tasks = [
 ]
 results = await asyncio.gather(*tasks, return_exceptions=True)
 ```
+
+## tmux-resurrect統合
+
+### 概要
+
+iTmuxは[tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect)と統合して、tmuxセッションの永続化を実現します。
+
+### 問題: tmux-continuumの非互換性
+
+tmux-continuumの自動保存機能は、iTerm2のControl Mode（-CC）では動作しません。
+
+- **原因**: tmux-continuumはControl Modeクライアントを正しく検出できない
+- **参考**: [tmux-continuum issue #40](https://github.com/tmux-plugins/tmux-continuum/issues/40)
+- **メンテナーの回答**: "a good chance it won't work"
+
+### 解決策: sync時の自動保存
+
+iTmuxは、sync操作時にtmux-resurrectの保存スクリプトを直接実行します。
+
+```python
+def _save_tmux_resurrect(self) -> None:
+    """tmux-resurrectで状態を保存."""
+    save_script = Path.home() / ".tmux" / "plugins" / "tmux-resurrect" / "scripts" / "save.sh"
+
+    if save_script.exists():
+        subprocess.run([str(save_script)], timeout=5)
+```
+
+### 自動保存のタイミング
+
+sync操作は以下のタイミングで実行されるため、自動的に保存されます：
+
+- **ウィンドウ作成**: `after-new-window` hook → `itmux sync` → resurrect保存
+- **ウィンドウ削除**: `window-unlinked` hook → `itmux sync` → resurrect保存
+- **ウィンドウ名変更**: `after-rename-window` hook → `itmux sync` → resurrect保存
+- **プロジェクトを閉じる**: `itmux close` → `sync` → resurrect保存
+
+これにより、tmux-continuumの5分間隔より**頻繁**に保存されます。
+
+### 保存される内容
+
+tmux-resurrectにより以下が保存されます：
+
+- **実行中のプロセス**（vim、npm run devなど）
+- **ペイン分割**の状態
+- **カレントディレクトリ**（各ペイン）
+- **ウィンドウ配置**
+
+iTmuxのconfig.jsonとは独立して動作します：
+
+| 保存場所 | 保存内容 | 用途 |
+|---------|---------|------|
+| config.json | ウィンドウ名リスト、ウィンドウサイズ | iTmux独自のプロジェクト管理 |
+| resurrect/*.txt | プロセス、ペイン、ディレクトリ | tmuxセッション状態の完全復元 |
+
+### 復元フロー
+
+1. システム再起動後、tmux起動
+2. tmux-resurrectで復元（`prefix + Ctrl-r`）
+3. `itmux open <project>`でiTerm2ウィンドウを開く
 
 ## セキュリティ
 

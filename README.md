@@ -47,6 +47,23 @@ iTerm2でtmuxウィンドウを×ボタンで閉じる時、ダイアログが�
 - tmux
 - Python 3.12+
 
+### オプション: tmux-resurrect統合
+
+iTmuxは[tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect)と統合して、tmuxセッションの永続化を実現します。
+
+**tmux-resurrectをインストールすることで**:
+- 実行中のプロセス（vim、npm run devなど）を保存
+- ペイン分割の状態を保存
+- カレントディレクトリを保存
+- システム再起動後も復元可能
+
+**自動保存**:
+tmux-continuumは不要です。iTmuxが以下のタイミングで自動的に保存します：
+- ウィンドウ作成・削除・名前変更時
+- プロジェクトを閉じる時
+
+詳細は[使い方ガイド](docs/USAGE.md#tmux-resurrect統合)を参照してください。
+
 ## 開発
 
 ### セットアップ
