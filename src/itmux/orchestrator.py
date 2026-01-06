@@ -135,13 +135,14 @@ class ProjectOrchestrator:
             }
         return result
 
-    async def open(self, project_name: str) -> None:
+    async def open(self, project_name: str, create_default: bool = True) -> None:
         """プロジェクトを開く.
 
         プロジェクトが存在しない場合は自動作成します。
 
         Args:
             project_name: プロジェクト名
+            create_default: プロジェクトのウィンドウが0個の場合、defaultウィンドウを作成するか
 
         Raises:
             ITerm2Error: iTerm2操作が失敗
@@ -168,7 +169,8 @@ class ProjectOrchestrator:
             if w.name not in existing_window_names
         ]
 
-        if windows_to_open:
+        # windows_to_openが空でも、プロジェクトのウィンドウが0個かつcreate_default=Trueなら開く
+        if windows_to_open or (not project.tmux_windows and create_default):
             await self.bridge.open_project_windows(project_name, windows_to_open)
 
         # 4. hookを設定（自動同期を有効化）

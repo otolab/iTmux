@@ -88,7 +88,7 @@ class TestOpen:
 
         assert result.exit_code == 0
         assert "✓ Opened project: test-project" in result.output
-        mock_orchestrator.open.assert_called_once_with("test-project")
+        mock_orchestrator.open.assert_called_once_with("test-project", create_default=True)
 
     def test_open_project_not_found(self):
         """存在しないプロジェクト."""

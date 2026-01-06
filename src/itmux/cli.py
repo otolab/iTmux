@@ -67,11 +67,12 @@ def main():
 
 @main.command()
 @click.argument("project")
-def open(project: str):
+@click.option("--no-default", is_flag=True, help="Do not create default window if project has no windows")
+def open(project: str, no_default: bool):
     """Open or restore a project window set."""
     async def _open():
         orchestrator = await get_orchestrator()
-        await orchestrator.open(project)
+        await orchestrator.open(project, create_default=not no_default)
 
     run_async_command(_open(), f"✓ Opened project: {project}")
 
