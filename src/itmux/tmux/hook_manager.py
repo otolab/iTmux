@@ -65,11 +65,6 @@ class HookManager:
             f"set-hook -t {project_name} window-unlinked \"run-shell -b '{hook_command}'\""
         )
 
-        # window名変更時のhook（セッションスコープ）
-        await tmux_conn.async_send_command(
-            f"set-hook -t {project_name} after-rename-window \"run-shell -b '{hook_command}'\""
-        )
-
         # session終了時のhook（グローバルスコープ）
         # 全プロジェクトの整合性をチェック（-gで上書き、-agではない）
         # どのセッションが閉じても、全プロジェクトをチェックして存在しないセッションを削除
@@ -98,9 +93,6 @@ class HookManager:
             )
             await tmux_conn.async_send_command(
                 f"set-hook -u -t {project_name} window-unlinked"
-            )
-            await tmux_conn.async_send_command(
-                f"set-hook -u -t {project_name} after-rename-window"
             )
             # session-closedはグローバルスコープなので削除しない
         except Exception:

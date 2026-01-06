@@ -38,26 +38,22 @@ class ProjectOrchestrator:
         )
         return result.returncode == 0
 
-    def _get_tmux_windows_direct(self, session_name: str) -> list[WindowConfig]:
-        """tmuxコマンドで直接ウィンドウリストを取得（iTerm2 API不要）.
+    async def _get_windows_from_user_variables(self, project_name: str) -> list[WindowConfig]:
+        """iTerm2のuser変数からウィンドウリストを取得.
 
         Args:
-            session_name: セッション名
+            project_name: プロジェクト名
 
         Returns:
-            list[WindowConfig]: ウィンドウ設定のリスト
+            list[WindowConfig]: ウィンドウ設定のリスト（user.window_nameベース）
         """
-        result = subprocess.run(
-            ["tmux", "list-windows", "-t", session_name, "-F", "#{window_name}"],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            return []
-
-        window_names = result.stdout.strip().split('\n') if result.stdout.strip() else []
-        return [WindowConfig(name=name) for name in window_names]
+        windows = await self.bridge.find_windows_by_project(project_name)
+        result = []
+        for window in windows:
+            window_id = await window.async_get_variable("user.window_name")
+            if window_id:
+                result.append(WindowConfig(name=window_id))
+        return result
 
     def _resolve_project_name(self, project_name: Optional[str]) -> str:
         """プロジェクト名を解決（引数 or tmux session or 環境変数）.
@@ -282,9 +278,9 @@ class ProjectOrchestrator:
                 pass
             return
 
-        # 3. tmuxセッションから実際のウィンドウリストを取得
-        print(f"[sync] Getting tmux windows", file=sys.stderr)
-        windows_config = self._get_tmux_windows_direct(project_name)
+        # 3. iTerm2のuser変数から実際のウィンドウリストを取得
+        print(f"[sync] Getting windows from user variables", file=sys.stderr)
+        windows_config = await self._get_windows_from_user_variables(project_name)
         print(f"[sync] Got {len(windows_config)} windows", file=sys.stderr)
 
         # 4. 設定を更新
