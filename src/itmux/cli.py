@@ -78,13 +78,15 @@ def open(project: str):
 
 @main.command()
 @click.argument("project", required=False)
-def sync(project: str | None):
+@click.option("--all", is_flag=True, help="Sync all projects (check session existence)")
+def sync(project: str | None, all: bool):
     """Sync project configuration with current tmux session state."""
     async def _sync():
         orchestrator = await get_orchestrator()
-        await orchestrator.sync(project)
+        await orchestrator.sync(project, sync_all=all)
 
-    run_async_command(_sync(), f"✓ Synced project: {project or 'current'}", handle_value_error=True)
+    message = "✓ Synced all projects" if all else f"✓ Synced project: {project or 'current'}"
+    run_async_command(_sync(), message, handle_value_error=True)
 
 
 @main.command()

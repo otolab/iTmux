@@ -1,7 +1,6 @@
 """tmuxセッションの管理."""
 
 import iterm2
-from ..models import WindowConfig
 from ..exceptions import ITerm2Error
 
 
@@ -47,26 +46,3 @@ class SessionManager:
                 continue
 
         raise ITerm2Error(f"TmuxConnection not found for project: {project_name}")
-
-    async def get_tmux_windows(self, project_name: str) -> list[WindowConfig]:
-        """プロジェクトのtmuxセッションから実際のウィンドウリストを取得.
-
-        iTerm2 Windowが閉じられていても、tmuxセッションに存在するウィンドウを全て取得します。
-
-        Args:
-            project_name: プロジェクト名
-
-        Returns:
-            list[WindowConfig]: ウィンドウ設定のリスト
-
-        Raises:
-            ITerm2Error: tmuxコマンド実行に失敗
-        """
-        try:
-            tmux_conn = await self.get_tmux_connection(project_name)
-            result = await tmux_conn.async_send_command("list-windows -F '#{window_name}'")
-            window_names = result.strip().split('\n') if result.strip() else []
-
-            return [WindowConfig(name=name) for name in window_names]
-        except Exception as e:
-            raise ITerm2Error(f"Failed to get tmux windows: {e}") from e

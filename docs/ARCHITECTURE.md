@@ -6,10 +6,11 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Mode（`-CC`）を統合し、�
 
 ### 核心概念
 
-**1プロジェクト = 複数のtmuxセッション**
+**1プロジェクト = 1 tmuxセッション = 複数のtmuxウィンドウ**
 
 - プロジェクト: ユーザーが定義する論理的なグループ（例: "my-project"）
-- tmuxセッション: 独立した作業環境（1セッション = iTerm2の1ウィンドウ）
+- tmuxセッション: プロジェクトと1:1で対応（セッション名 = プロジェクト名）
+- tmuxウィンドウ: セッション内の作業環境（1ウィンドウ = iTerm2の1ウィンドウ）
 - ユーザー変数: iTerm2ウィンドウに付与されるメタデータ（`user.projectID`）
 
 ## システムアーキテクチャ
@@ -51,115 +52,181 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Mode（`-CC`）を統合し、�
 
 ### Open操作
 
+**基本方針：差分のみを開く（冪等性）**
+
 ```
 1. ユーザー入力
    $ itmux open my-project
 
 2. 設定読み込み
    ~/.itmux/config.json
-   → sessions: [my_editor, my_server, my_logs]
+   → tmux_windows: [
+       {name: "editor", window_size: {...}},
+       {name: "server", window_size: {...}},
+       {name: "logs"}
+     ]
 
-3. 各セッションに対して処理
-   for each session:
-     a. tmuxセッション存在確認
-        tmux has-session -t <session_name>
+3. 既存のiTerm2ウィンドウを検索（差分検出）
+   existing_windows = find_windows_by_project("my-project")
+   existing_window_names = set()
 
-     b. iTerm2ウィンドウ作成（ゲートウェイ）
-        iterm2.Window.async_create()
+   for window in existing_windows:
+     window_name = await window.async_get_variable("user.window_name")
+     existing_window_names.add(window_name)
 
-     c. tmux -CC 起動
-        tmux -CC attach-session -t <session_name>
+   # 例: ["editor", "server"] が既に開いている
 
-     d. WindowCreationMonitor で新ウィンドウ監視
-        → user.projectID = "my-project" タグ付け
-        → user.tmux_session = "<session_name>" タグ付け
+4. まだ開かれていないwindowだけを開く
+   windows_to_open = [
+     w for w in tmux_windows
+     if w.name not in existing_window_names
+   ]
 
-     e. ウィンドウサイズ復元
-        tmux resize-window -t <session> -x <cols> -y <lines>
+   # 例: ["logs"] だけを開く
 
-     f. ゲートウェイウィンドウクリーンアップ
-        gateway_window.async_close()
+5. セッションに接続してウィンドウを開く
+   if windows_to_open:
+     a. tmux -CC で接続
+        tmux -CC new-session -A -s my-project -n logs
 
-4. 完了
-   → iTerm2に3つのウィンドウが開く
-   → 各ウィンドウに user.projectID タグ
+     b. TmuxConnection取得
+        tmux_conn = get_tmux_connection("my-project")
+
+     c. 各ウィンドウを作成/タグ付け
+        for each window in windows_to_open:
+          - 既存ウィンドウならタグ付けのみ
+          - 新規ウィンドウなら作成してタグ付け
+          - user.projectID = "my-project" 設定
+          - user.window_name = "<window_name>" 設定
+
+6. hookを設定（自動同期を有効化）
+   await bridge.setup_hooks(project_name)
+
+   - セッションスコープのhook（after-new-window等）: 上書き
+   - グローバルのsession-closed: 上書き
+   - 何回openしても多重登録されない（冪等性）
+
+7. 環境変数設定
+   export ITMUX_PROJECT=my-project
+
+8. 完了
+   → iTerm2に必要なウィンドウだけが開く
+   → 既に開いているウィンドウはそのまま
+   → 各ウィンドウに user.projectID, user.window_name タグ
+   → tmux hookによる自動同期が有効化
 ```
 
 ### Close操作（自動同期）
+
+**基本方針：開いているウィンドウだけを閉じる**
 
 ```
 1. ユーザー入力
    $ itmux close [project]
    # project省略時は環境変数 $ITMUX_PROJECT から取得
 
-2. プロジェクトに属するウィンドウ検索
-   for window in app.windows:
-     if window.user.projectID == "my-project":
-       target_windows.append(window)
+2. プロジェクトのiTerm2ウィンドウを検索
+   windows = find_windows_by_project("my-project")
 
-3. 現在の状態を自動保存（必須）
-   sessions = []
-   for window in target_windows:
-     session_name = window.user.tmux_session
-     window_size = get_window_size(window)
-     sessions.append({
-       "name": session_name,
-       "window_size": window_size
-     })
+3. ウィンドウが見つからなければ終了
+   if not windows:
+     return  # 何もしない
 
-   # config.jsonを上書き保存
-   update_config("my-project", sessions)
+4. 同期（tmuxからconfig.jsonへ）
+   tmux_windows = tmux list-windows -t my-project -F '#{window_name}'
+   config.update_project("my-project", tmux_windows)
 
-4. 各ウィンドウをデタッチ
-   for window in target_windows:
-     window.async_activate()
-     app.async_select_menu_item("tmux.Detach")
-     await sleep(0.5)
+5. セッション全体をdetach
+   # 1つのウィンドウをアクティブにしてDetachすれば全ウィンドウが閉じる
+   windows[0].async_activate()
+   await MainMenu.async_select_menu_item(connection, "tmux.Detach")
 
-5. 環境変数クリア
+6. 環境変数クリア
    unset ITMUX_PROJECT
 
-6. 完了
-   → iTerm2ウィンドウは閉じる
+7. 完了
+   → iTerm2ウィンドウは全て閉じる
    → tmuxセッションはバックグラウンド継続
    → config.jsonは現在の状態を反映
 ```
 
-### Add操作（セッション追加）
+### Add操作（ウィンドウ追加）
 
 ```
 1. ユーザー入力
-   $ itmux add [project] [session-name]
+   $ itmux add [project] [window-name]
    # project省略時は $ITMUX_PROJECT から取得
-   # session-name省略時は自動生成（例: project-1, project-2）
+   # window-name省略時は自動生成（例: window-1, window-2）
 
-2. セッション名決定
-   if session-name 指定あり:
-     use session-name
+2. ウィンドウ名決定
+   if window-name 指定あり:
+     use window-name
    else:
-     session-name = generate_session_name(project)
+     window-name = generate_window_name(project)
      # 例: my-project-1, my-project-2, ...
 
-3. iTerm2ウィンドウ作成（ゲートウェイ）
-   gateway_window = iterm2.Window.async_create()
+3. TmuxConnection取得
+   tmux_conn = get_tmux_connection(project)
 
-4. tmux -CC 新規セッション起動
-   tmux -CC new-session -s <session-name>
+4. 新しいtmuxウィンドウを作成
+   iterm_window = await tmux_conn.async_create_window()
+   await tmux_conn.async_send_command(f"rename-window {window-name}")
 
-5. WindowCreationMonitorで新ウィンドウ監視
-   → user.projectID = "<project>" タグ付け
-   → user.tmux_session = "<session-name>" タグ付け
+5. iTerm2ウィンドウにタグ付け
+   await iterm_window.async_set_variable("user.projectID", project)
+   await iterm_window.async_set_variable("user.window_name", window-name)
 
-6. config.jsonに追加
-   add_session_to_config(project, session-name)
-
-7. ゲートウェイウィンドウクリーンアップ
-   gateway_window.async_close()
-
-8. 完了
+6. 完了（自動同期）
    → 新しいiTerm2ウィンドウが開く
-   → config.jsonに追加される
+   → tmux hookが発火してconfig.jsonに自動追加される
 ```
+
+### Sync操作（tmux → config.json）
+
+**基本方針：tmuxの状態が正。iTerm2 windowには触らない**
+
+```
+1. 実行契機
+   - ユーザーが直接実行: $ itmux sync [project]
+   - ユーザーが全体同期: $ itmux sync --all
+   - tmux hookから自動実行:
+     * after-new-window: ウィンドウ作成時 → itmux sync {project}
+     * window-unlinked: ウィンドウ削除時 → itmux sync {project}
+     * after-rename-window: ウィンドウ名変更時 → itmux sync {project}
+     * session-closed: セッション終了時 → itmux sync --all
+
+2. sync --all の場合（全プロジェクトチェック）
+   for project_name in config.list_projects():
+     if not tmux has-session -t project_name:
+       config.delete_project(project_name)
+   return
+
+3. プロジェクト名決定（単一プロジェクト同期の場合）
+   project_name = 引数 or 環境変数 $ITMUX_PROJECT
+
+4. tmuxセッション存在確認
+   if not tmux has-session -t project_name:
+     # セッション終了 → プロジェクトを削除
+     config.delete_project(project_name)
+     return
+
+5. tmuxからウィンドウリスト取得（iTerm2 API不使用）
+   result = tmux list-windows -t project_name -F '#{window_name}'
+   windows = parse(result)
+   # 例: ["editor", "server", "logs"]
+
+6. config.jsonに保存
+   config.update_project(project_name, windows)
+
+7. 完了
+   → config.jsonがtmuxの現在状態を反映
+   → iTerm2 windowには一切触らない
+```
+
+**重要な設計判断：**
+- syncはtmuxコマンドで直接情報を取得する（iTerm2 TmuxConnection不要）
+- これにより、tmux hookから呼ばれた時も動作する
+- 新しいiTerm2 Connectionコンテキストでも問題なく動作
 
 ## コンポーネント構成
 
@@ -400,35 +467,43 @@ tmuxのhook機能を使って、ウィンドウの作成・削除・名前変更
 **重要な特性：**
 - hookはtmux sessionに設定される（TmuxConnection = session）
 - sessionが存在する限りhookは永続化される
-- `open`のたびに削除→再設定で冪等性を確保
+- `set-hook`（-aなし）は上書き、`set-hook -a`は追加
+- openのたびに設定しても上書きされるため多重登録されない（冪等性）
 
 **設定されるhook：**
 
 ```python
-# セッションスコープのhook
+# セッションスコープのhook（-aなしで上書き）
 set-hook -t {project_name} after-new-window "run-shell -b '{itmux_command} sync {project_name}'"
 set-hook -t {project_name} window-unlinked "run-shell -b '{itmux_command} sync {project_name}'"
 set-hook -t {project_name} after-rename-window "run-shell -b '{itmux_command} sync {project_name}'"
 
-# グローバルスコープのhook（append）
-set-hook -ag session-closed "run-shell -b '{itmux_command} sync {project_name}'"
+# グローバルスコープのhook（-gで上書き、-agではない）
+set-hook -g session-closed "run-shell -b '{itmux_command} sync --all'"
+```
+
+**sync --allの動作：**
+```python
+# 全プロジェクトをチェックして、セッションが存在しないものを削除
+for project_name in config.list_projects():
+    if not tmux_has_session(project_name):
+        config.delete_project(project_name)
 ```
 
 ### 冪等性の確保
 
-`open`時に既存hookを削除してから再設定：
+`open`のたびにhookを設定：
 
 ```python
-# 1. 既存hookを削除
-await bridge.remove_hooks(project_name)
-
-# 2. 新規設定
+# hookを設定（上書きされるため削除不要）
 await bridge.setup_hooks(project_name, itmux_command)
 ```
 
 これにより：
-- 何回`open`しても、hookが重複しない
-- 存在しないhookを削除してもエラーは無視される（冪等性）
+- セッションスコープのhook（`set-hook -t`）: 上書きされる
+- グローバルのhook（`set-hook -g`）: 上書きされる
+- 何回`open`しても、hookが重複しない（冪等性）
+- 事前の削除（remove_hooks）は不要
 
 ### バックグラウンド実行
 

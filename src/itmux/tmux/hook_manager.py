@@ -47,11 +47,12 @@ class HookManager:
         )
 
         # session終了時のhook（グローバルスコープ）
-        # シンプルに、このプロジェクトのsyncを実行
-        # 既にセッションが終了しているため、sync内でセッション存在チェックが走り、
-        # プロジェクトが自動削除される
+        # 全プロジェクトの整合性をチェック（-gで上書き、-agではない）
+        # どのセッションが閉じても、全プロジェクトをチェックして存在しないセッションを削除
+        # 注意: project_nameは使わず、--allで全体チェック
+        sync_all_command = f"PATH={current_path} {itmux_command} sync --all >> ~/.itmux/hook.log 2>&1 || true"
         await tmux_conn.async_send_command(
-            f"set-hook -ag session-closed \"run-shell -b '{hook_command}'\""
+            f"set-hook -g session-closed \"run-shell -b '{sync_all_command}'\""
         )
 
     async def remove_hooks(

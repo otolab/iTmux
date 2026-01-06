@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from itmux.iterm2_bridge import ITerm2Bridge
+from itmux.iterm2.bridge import ITerm2Bridge
 from itmux.models import WindowSize
 from itmux.exceptions import ITerm2Error, WindowCreationTimeoutError
 
@@ -116,41 +116,3 @@ class TestSetWindowSize:
 
         with pytest.raises(ITerm2Error, match="Window not found"):
             await bridge.set_window_size("nonexistent-id", window_size)
-
-
-class TestDetachSession:
-    """detach_session()のテスト."""
-
-    @pytest.mark.asyncio
-    async def test_detach_session_success(
-        self, mock_iterm2_connection, mock_iterm2_app
-    ):
-        """セッションデタッチ成功."""
-        window = AsyncMock()
-        window.window_id = "test-window-id"
-        window.async_activate = AsyncMock()
-
-        mock_iterm2_app.get_window_by_id = MagicMock(return_value=window)
-
-        with patch("itmux.iterm2_bridge.iterm2.MainMenu.async_select_menu_item", new=AsyncMock()) as mock_menu:
-            bridge = ITerm2Bridge(mock_iterm2_connection, mock_iterm2_app)
-
-            await bridge.detach_session("test-window-id")
-
-            # ウィンドウがアクティブ化され、メニューが実行されたことを確認
-            window.async_activate.assert_called_once()
-            mock_menu.assert_called_once_with(
-                mock_iterm2_connection, "tmux.Detach"
-            )
-
-    @pytest.mark.asyncio
-    async def test_detach_session_window_not_found(
-        self, mock_iterm2_connection, mock_iterm2_app
-    ):
-        """ウィンドウが見つからない場合はエラー."""
-        mock_iterm2_app.get_window_by_id = MagicMock(return_value=None)
-
-        bridge = ITerm2Bridge(mock_iterm2_connection, mock_iterm2_app)
-
-        with pytest.raises(ITerm2Error, match="Window not found"):
-            await bridge.detach_session("nonexistent-id")

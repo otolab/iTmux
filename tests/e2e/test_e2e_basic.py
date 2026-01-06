@@ -19,13 +19,22 @@ class TestE2EBasicFlow:
 
         # tmuxセッションが作成されたことを確認
         time.sleep(2)  # ウィンドウ作成を待つ
+        # 1プロジェクト = 1セッション
         tmux_result = subprocess.run(
             ["tmux", "list-sessions", "-F", "#{session_name}"],
             capture_output=True,
             text=True
         )
-        assert "e2e_editor" in tmux_result.stdout
-        assert "e2e_server" in tmux_result.stdout
+        assert "e2e-test-project" in tmux_result.stdout
+
+        # ウィンドウを確認
+        tmux_windows = subprocess.run(
+            ["tmux", "list-windows", "-t", "e2e-test-project", "-F", "#{window_name}"],
+            capture_output=True,
+            text=True
+        )
+        assert "e2e_editor" in tmux_windows.stdout
+        assert "e2e_server" in tmux_windows.stdout
 
         # 2. プロジェクト一覧を確認
         result = cli_runner("list")
@@ -40,16 +49,16 @@ class TestE2EBasicFlow:
         assert "✓ Added window" in result.output
 
         time.sleep(2)
-        tmux_result = subprocess.run(
-            ["tmux", "list-sessions", "-F", "#{session_name}"],
+        tmux_windows = subprocess.run(
+            ["tmux", "list-windows", "-t", "e2e-test-project", "-F", "#{window_name}"],
             capture_output=True,
             text=True
         )
-        assert "e2e_logs" in tmux_result.stdout
+        assert "e2e_logs" in tmux_windows.stdout
 
         # 4. プロジェクトを閉じる
         result = cli_runner("close", "e2e-test-project")
-        assert result.exit_code == 0
+        assert result.exit_code == 0, f"Close failed: {result.output}"
         assert "✓ Closed project" in result.output
 
         # セッションはバックグラウンドで残っている
@@ -60,11 +69,11 @@ class TestE2EBasicFlow:
             text=True
         )
         # セッションはまだ存在する（デタッチされただけ）
-        assert "e2e_editor" in tmux_result.stdout
+        assert "e2e-test-project" in tmux_result.stdout
 
         # 5. 再度開く
         result = cli_runner("open", "e2e-test-project")
-        assert result.exit_code == 0
+        assert result.exit_code == 0, f"Reopen failed: {result.output}"
         assert "✓ Opened project" in result.output
 
         # 追加したウィンドウも復元される

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from filelock import FileLock
+
 from .models import Config, ProjectConfig, WindowConfig
 from .exceptions import ConfigError, ProjectNotFoundError
 
@@ -20,10 +22,11 @@ class ConfigManager:
             config_path: 設定ファイルパス（省略時はデフォルト）
         """
         self.config_path = config_path or DEFAULT_CONFIG_PATH
+        self.lock_path = self.config_path.parent / f".{self.config_path.name}.lock"
         self._config: Optional[Config] = None
 
     def load(self) -> Config:
-        """設定ファイルを読み込む.
+        """設定ファイルを読み込む（ファイルロック付き）.
 
         Returns:
             Config: 読み込んだ設定
@@ -31,23 +34,27 @@ class ConfigManager:
         Raises:
             ConfigError: ファイル読み込みエラー、JSON形式エラー
         """
-        if not self.config_path.exists():
-            # ファイルが存在しない場合は空の設定を返す
-            self._config = Config(projects={})
-            return self._config
+        # ロックファイルのディレクトリを作成
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
 
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                self._config = Config.model_validate(data)
+        with FileLock(self.lock_path, timeout=10):
+            if not self.config_path.exists():
+                # ファイルが存在しない場合は空の設定を返す
+                self._config = Config(projects={})
                 return self._config
-        except json.JSONDecodeError as e:
-            raise ConfigError(f"Invalid JSON format: {e}") from e
-        except Exception as e:
-            raise ConfigError(f"Failed to load config: {e}") from e
+
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._config = Config.model_validate(data)
+                    return self._config
+            except json.JSONDecodeError as e:
+                raise ConfigError(f"Invalid JSON format: {e}") from e
+            except Exception as e:
+                raise ConfigError(f"Failed to load config: {e}") from e
 
     def save(self, config: Optional[Config] = None) -> None:
-        """設定ファイルを保存する.
+        """設定ファイルを保存する（ファイルロック付き）.
 
         Args:
             config: 保存する設定（省略時は現在の設定）
@@ -62,14 +69,16 @@ class ConfigManager:
 
         # ディレクトリ作成
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
 
-        try:
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                data = config.model_dump(exclude_none=True)
-                json.dump(data, f, indent=2, ensure_ascii=False)
-                f.write("\n")  # 末尾改行
-        except Exception as e:
-            raise ConfigError(f"Failed to save config: {e}") from e
+        with FileLock(self.lock_path, timeout=10):
+            try:
+                with open(self.config_path, "w", encoding="utf-8") as f:
+                    data = config.model_dump(exclude_none=True)
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                    f.write("\n")  # 末尾改行
+            except Exception as e:
+                raise ConfigError(f"Failed to save config: {e}") from e
 
     def get_project(self, project_name: str) -> ProjectConfig:
         """プロジェクト設定を取得.

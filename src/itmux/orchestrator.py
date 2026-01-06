@@ -1,5 +1,6 @@
 """iTmux project orchestrator."""
 
+import asyncio
 import os
 import subprocess
 from typing import Optional
@@ -36,6 +37,27 @@ class ProjectOrchestrator:
             capture_output=True,
         )
         return result.returncode == 0
+
+    def _get_tmux_windows_direct(self, session_name: str) -> list[WindowConfig]:
+        """tmuxコマンドで直接ウィンドウリストを取得（iTerm2 API不要）.
+
+        Args:
+            session_name: セッション名
+
+        Returns:
+            list[WindowConfig]: ウィンドウ設定のリスト
+        """
+        result = subprocess.run(
+            ["tmux", "list-windows", "-t", session_name, "-F", "#{window_name}"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            return []
+
+        window_names = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        return [WindowConfig(name=name) for name in window_names]
 
     def _resolve_project_name(self, project_name: Optional[str]) -> str:
         """プロジェクト名を解決（引数 or tmux session or 環境変数）.
@@ -132,36 +154,59 @@ class ProjectOrchestrator:
             self.config.create_project(project_name, windows=[])
             project = self.config.get_project(project_name)
 
-        # 2. プロジェクトのtmuxウィンドウを開く
-        await self.bridge.open_project_windows(project_name, project.tmux_windows)
+        # 2. 既存のiTerm2ウィンドウを検索（既に開いているwindowを特定）
+        existing_windows = await self.bridge.find_windows_by_project(project_name)
+        existing_window_names = set()
+        for window in existing_windows:
+            window_name = await window.async_get_variable("user.window_name")
+            if window_name:
+                existing_window_names.add(window_name)
 
-        # 3. hookを設定（自動同期）
-        # itmuxコマンドのパスを取得（scripts/itmuxまたはインストール済み）
-        import sys
-        from pathlib import Path
-        script_path = Path(__file__).parent.parent.parent / "scripts" / "itmux"
-        itmux_command = str(script_path) if script_path.exists() else "itmux"
-        # 既存のhookを削除してから再設定（冪等性のため）
-        await self.bridge.remove_hooks(project_name)
-        await self.bridge.setup_hooks(project_name, itmux_command)
+        # 3. まだ開かれていないwindowだけを開く（差分のみ）
+        windows_to_open = [
+            w for w in project.tmux_windows
+            if w.name not in existing_window_names
+        ]
 
-        # 4. 環境変数設定
+        if windows_to_open:
+            await self.bridge.open_project_windows(project_name, windows_to_open)
+
+        # 4. hookを設定（自動同期を有効化）
+        # セッションスコープのhook（after-new-window等）は上書きされるため、
+        # グローバルのsession-closedも上書きされるため、何回openしても多重登録されない
+        await self.bridge.setup_hooks(project_name)
+
+        # 5. 環境変数設定
         os.environ["ITMUX_PROJECT"] = project_name
 
-    async def sync(self, project_name: Optional[str] = None) -> None:
+    async def sync(self, project_name: Optional[str] = None, sync_all: bool = False) -> None:
         """プロジェクトの状態を同期（tmuxセッション → config.json）.
 
         tmuxセッションが存在しない場合（全ウィンドウ削除でセッション終了）、
         プロジェクトをconfig.jsonから削除し、gateway情報もクリアします。
 
         Args:
-            project_name: プロジェクト名（省略時は環境変数から取得）
+            project_name: プロジェクト名（省略時は環境変数から取得、sync_all=Trueの場合は無視）
+            sync_all: 全プロジェクトの整合性をチェック（session-closed hookから呼ばれる）
 
         Raises:
-            ProjectNotFoundError: プロジェクトが存在しない
+            ProjectNotFoundError: プロジェクトが存在しない（sync_all=Falseの場合のみ）
         """
         import sys
         print(f"[sync] START pid={os.getpid()}", file=sys.stderr)
+
+        # sync_all=Trueの場合、全プロジェクトをチェック
+        if sync_all:
+            print(f"[sync] Checking all projects", file=sys.stderr)
+            for proj_name in self.config.list_projects():
+                if not self._tmux_has_session(proj_name):
+                    print(f"[sync] Deleting project without session: {proj_name}", file=sys.stderr)
+                    try:
+                        self.config.delete_project(proj_name)
+                    except Exception:
+                        pass
+            print(f"[sync] END (all projects checked)", file=sys.stderr)
+            return
 
         # 1. プロジェクト名決定
         project_name = self._resolve_project_name(project_name)
@@ -179,15 +224,21 @@ class ProjectOrchestrator:
             print(f"[sync] END (session deleted)", file=sys.stderr)
             return
 
-        # 3. tmuxセッションから実際のウィンドウリストを取得
+        # 3. tmuxセッションから実際のウィンドウリストを取得（tmuxコマンド直接実行）
         print(f"[sync] Getting tmux windows", file=sys.stderr)
-        windows_config = await self.bridge.get_tmux_windows(project_name)
+        windows_config = self._get_tmux_windows_direct(project_name)
         print(f"[sync] Got {len(windows_config)} windows", file=sys.stderr)
 
         # 4. 設定を更新
         if windows_config:
-            self.config.update_project(project_name, windows_config)
-            print(f"[sync] Config updated", file=sys.stderr)
+            try:
+                self.config.update_project(project_name, windows_config)
+                print(f"[sync] Config updated", file=sys.stderr)
+            except ProjectNotFoundError:
+                # プロジェクトが存在しない場合は作成してから更新
+                print(f"[sync] Project not found, creating", file=sys.stderr)
+                self.config.create_project(project_name, windows_config)
+                print(f"[sync] Project created", file=sys.stderr)
 
         print(f"[sync] END", file=sys.stderr)
 
@@ -203,16 +254,26 @@ class ProjectOrchestrator:
         # 1. プロジェクト名決定
         project_name = self._resolve_project_name(project_name)
 
-        # 2. 同期
+        # 2. プロジェクトのiTerm2ウィンドウを検索
+        windows = await self.bridge.find_windows_by_project(project_name)
+
+        # 3. ウィンドウが見つからなければ何もしない
+        if not windows:
+            return
+
+        # 4. 同期
         await self.sync(project_name)
 
-        # 3. hookを削除
-        await self.bridge.remove_hooks(project_name)
+        # 5. セッション全体をdetach（1つのウィンドウをアクティブにしてDetachすれば全ウィンドウが閉じる）
+        import iterm2
+        if windows:
+            await windows[0].async_activate()
+            await iterm2.MainMenu.async_select_menu_item(
+                self.bridge.connection,
+                "tmux.Detach"
+            )
 
-        # 4. セッションをデタッチ
-        await self.bridge.detach_session(project_name)
-
-        # 5. 環境変数クリア
+        # 6. 環境変数クリア
         if "ITMUX_PROJECT" in os.environ:
             del os.environ["ITMUX_PROJECT"]
 
@@ -238,6 +299,6 @@ class ProjectOrchestrator:
         # 3. 新規ウィンドウ作成
         await self.bridge.add_window(project_name, window_name)
 
-        # 4. 設定に追加
-        window_config = WindowConfig(name=window_name)
-        self.config.add_window(project_name, window_config)
+        # 4. 完了（hookが発火してconfig.jsonに自動追加される）
+        # after-new-window hookにより、itmux sync が実行され、
+        # config.jsonに自動的に追加されるため、手動での追加は不要

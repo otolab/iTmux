@@ -66,28 +66,6 @@ class ITerm2Bridge:
         cmd = f"tmux resize-window -x {window_size.columns} -y {window_size.lines}\n"
         await session.async_send_text(cmd)
 
-    async def detach_session(self, project_name: str) -> None:
-        """tmuxセッションをデタッチ（ウィンドウを閉じる、セッションは保持）.
-
-        Args:
-            project_name: プロジェクト名
-
-        Raises:
-            ITerm2Error: デタッチに失敗
-        """
-        try:
-            # TmuxConnection を取得
-            tmux_conn = await self.session_manager.get_tmux_connection(project_name)
-
-            # tmux detach-client コマンドを実行
-            await tmux_conn.async_send_command("detach-client")
-
-            # ウィンドウが閉じるのを待つ
-            await asyncio.sleep(0.5)
-
-        except Exception as e:
-            raise ITerm2Error(f"Failed to detach session: {e}") from e
-
     async def connect_to_session(self, project_name: str, first_window_name: str = "default") -> None:
         """tmux Control Modeセッションに接続.
 
@@ -111,8 +89,16 @@ class ITerm2Bridge:
             if not gateway:
                 raise ITerm2Error("Failed to create gateway window")
 
-            # TmuxConnection確立を待つ
-            await asyncio.sleep(1.0)
+            # TmuxConnection確立を待つ（ポーリング）
+            for attempt in range(20):  # 最大2秒（0.1秒 × 20回）
+                await asyncio.sleep(0.1)
+                try:
+                    await self.session_manager.get_tmux_connection(project_name)
+                    break  # 接続確立完了
+                except ITerm2Error:
+                    if attempt == 19:
+                        raise ITerm2Error(f"TmuxConnection not established after 2 seconds for project: {project_name}")
+                    continue
 
         except Exception as e:
             raise ITerm2Error(f"Failed to connect to session: {e}") from e
@@ -130,20 +116,6 @@ class ITerm2Bridge:
             ITerm2Error: TmuxConnection取得に失敗
         """
         return await self.session_manager.get_tmux_connection(project_name)
-
-    async def get_tmux_windows(self, project_name: str) -> list[WindowConfig]:
-        """プロジェクトのtmuxセッションから実際のウィンドウリストを取得.
-
-        Args:
-            project_name: プロジェクト名
-
-        Returns:
-            list[WindowConfig]: ウィンドウ設定のリスト
-
-        Raises:
-            ITerm2Error: tmuxコマンド実行に失敗
-        """
-        return await self.session_manager.get_tmux_windows(project_name)
 
     async def setup_hooks(self, project_name: str, itmux_command: str = "itmux") -> None:
         """プロジェクトのtmuxセッションにhookを設定して自動同期を有効化.
@@ -193,10 +165,7 @@ class ITerm2Bridge:
             # 新しいウィンドウを作成（openと同じ方法）
             iterm_window = await tmux_conn.async_create_window()
 
-            # ウィンドウ作成を待つ
-            await asyncio.sleep(0.5)
-
-            # ウィンドウ名を設定
+            # ウィンドウ名を設定（async_create_windowで作成完了済み）
             await tmux_conn.async_send_command(f"rename-window {window_name}")
 
             # iTerm2ウィンドウにタグ付け
@@ -243,7 +212,6 @@ class ITerm2Bridge:
             existing_window_names = set(result.strip().split('\n')) if result.strip() else set()
 
             # 5. 最初のウィンドウにタグ付け（connect_to_sessionで作成済み）
-            await asyncio.sleep(0.5)  # ウィンドウ作成を待つ
             window_ids = []
 
             # tmux window 0（最初のウィンドウ）を探してタグ付け
