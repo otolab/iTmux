@@ -5,6 +5,7 @@ iTmuxは、iTerm2とtmuxを組み合わせて、プロジェクト単位でタ�
 ## 目次
 
 - [セットアップ](#セットアップ)
+  - [iTerm2の推奨設定](#iterm2の推奨設定)
 - [基本概念](#基本概念)
 - [基本的な使い方](#基本的な使い方)
 - [プロジェクト定義](#プロジェクト定義)
@@ -39,6 +40,34 @@ export PATH="$PATH:$(pwd)/scripts"
 1. iTerm2を起動
 2. メニュー: **iTerm2 > Preferences > General > Magic**
 3. **Enable Python API** にチェック
+
+### iTerm2の推奨設定
+
+#### tmux統合の自動埋葬
+
+**Settings > General > tmux**で以下を有効化：
+
+- ☑ **Automatically bury the tmux client session after connecting**
+
+これにより、ゲートウェイセッションが自動的に非表示になります。
+
+#### ウィンドウを閉じる時の挙動
+
+iTerm2でtmuxウィンドウを×ボタンで閉じる時、以下のダイアログが表示されます：
+
+**Kill（推奨）または Detach を選択**
+
+iTmuxでは **Kill** を推奨します：
+
+- **Kill**: 対象のウィンドウだけを削除（他のウィンドウは残る）
+  - 自動的にconfig.jsonから削除される
+  - **iTmuxではこちらを推奨**
+
+- **Detach**: プロジェクト全体をdetach（全ウィンドウが閉じる）
+  - `itmux close`と同じ動作
+  - `itmux open`で再度全ウィンドウを復元可能
+
+**注意**: iTerm2のtmux統合には「個別ウィンドウのdetach」という概念がありません。個別操作はKill、全体操作はDetachのみです。
 
 ## 基本概念
 

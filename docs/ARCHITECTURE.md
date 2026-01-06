@@ -430,8 +430,28 @@ async def main(connection):
 - tmuxセッション1つ → 複数のiTerm2ウィンドウ（ウィンドウ数に応じて）
 - tmux pane → iTerm2ウィンドウ内でテキストベース分割表示
 - ウィンドウを閉じても、tmuxセッションは永続化
-- デタッチ = iTerm2ウィンドウだけ閉じる（セッション保持）
-- Kill = セッションごと終了（状態破棄）
+
+### ウィンドウを閉じる時の挙動
+
+iTerm2のtmux統合では、×ボタンでウィンドウを閉じる時に以下の2択が提供されます：
+
+**1. Kill（推奨）**
+- 対象のtmux windowを削除
+- 他のiTerm2ウィンドウは残る
+- `window-unlinked` hookが発火して自動的にconfig.jsonから削除される
+- **iTmuxではこちらを推奨**
+
+**2. Detach**
+- セッション全体をdetach（**全てのiTerm2ウィンドウが閉じる**）
+- tmuxセッションはバックグラウンドで継続
+- `itmux open`で再度全ウィンドウを復元可能
+
+**重要な制限**：
+iTerm2のtmux統合には「個別ウィンドウのdetach」という概念がありません。
+- 個別操作 → Kill（tmux windowを削除）
+- 全体操作 → Detach（session全体をdetach）
+
+この制限により、「iTerm2ウィンドウだけ閉じて、tmux windowは残したまま他のウィンドウも残す」という操作はできません。
 
 ### 主要コマンド
 
