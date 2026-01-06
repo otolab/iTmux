@@ -7,8 +7,18 @@ import iterm2
 class HookManager:
     """tmuxセッションのhookを管理するクラス.
 
-    プロジェクトの自動同期のため、window作成・削除・名前変更時のhookを設定します。
+    プロジェクトの自動同期のため、window/pane操作時のhookを設定します。
     """
+
+    # セッションスコープのhook定義（hook名, 説明）
+    # 将来的な追加・削除を容易にするためリストで管理
+    SESSION_HOOKS = [
+        ("after-new-window", "ウィンドウ作成時"),
+        ("window-unlinked", "ウィンドウ削除時"),
+        ("after-split-window", "pane分割時"),
+        ("after-kill-pane", "pane削除時"),
+        ("after-resize-pane", "paneリサイズ時"),
+    ]
 
     @staticmethod
     def _build_hook_command(project_name: str, itmux_command: str = "itmux") -> str:
@@ -55,15 +65,10 @@ class HookManager:
 
         # run-shell -b を使って外部コマンドをバックグラウンド実行
         # -b: バックグラウンド実行（デッドロック防止）
-        # window作成時のhook（セッションスコープ）
-        await tmux_conn.async_send_command(
-            f"set-hook -t {project_name} after-new-window \"run-shell -b '{hook_command}'\""
-        )
-
-        # window削除時のhook（セッションスコープ）
-        await tmux_conn.async_send_command(
-            f"set-hook -t {project_name} window-unlinked \"run-shell -b '{hook_command}'\""
-        )
+        for hook_name, description in self.SESSION_HOOKS:
+            await tmux_conn.async_send_command(
+                f"set-hook -t {project_name} {hook_name} \"run-shell -b '{hook_command}'\""
+            )
 
         # session終了時のhook（グローバルスコープ）
         # 全プロジェクトの整合性をチェック（-gで上書き、-agではない）
@@ -88,12 +93,10 @@ class HookManager:
         """
         try:
             # セッションスコープのhookを削除（-u オプション）
-            await tmux_conn.async_send_command(
-                f"set-hook -u -t {project_name} after-new-window"
-            )
-            await tmux_conn.async_send_command(
-                f"set-hook -u -t {project_name} window-unlinked"
-            )
+            for hook_name, _ in self.SESSION_HOOKS:
+                await tmux_conn.async_send_command(
+                    f"set-hook -u -t {project_name} {hook_name}"
+                )
             # session-closedはグローバルスコープなので削除しない
         except Exception:
             # hookが存在しない場合もエラーになるが、無視する
