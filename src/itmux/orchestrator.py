@@ -114,6 +114,39 @@ class ProjectOrchestrator:
                 return candidate
             counter += 1
 
+    def _save_tmux_resurrect(self) -> None:
+        """tmux-resurrectで状態を保存.
+
+        tmux-continuumの自動保存の代替として、sync時に手動で保存を実行します。
+        tmux-resurrectの保存スクリプトが存在する場合のみ実行します。
+        """
+        import sys
+        import subprocess
+        from pathlib import Path
+
+        save_script = Path.home() / ".tmux" / "plugins" / "tmux-resurrect" / "scripts" / "save.sh"
+
+        if not save_script.exists():
+            # tmux-resurrectがインストールされていない場合はスキップ
+            return
+
+        try:
+            result = subprocess.run(
+                [str(save_script)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False
+            )
+            if result.returncode != 0:
+                print(f"[sync] tmux-resurrect save failed: {result.stderr}", file=sys.stderr)
+            else:
+                print(f"[sync] tmux-resurrect saved", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            print(f"[sync] tmux-resurrect save timeout", file=sys.stderr)
+        except Exception as e:
+            print(f"[sync] tmux-resurrect save error: {e}", file=sys.stderr)
+
     def list(self) -> dict:
         """プロジェクト一覧取得.
 
@@ -198,6 +231,9 @@ class ProjectOrchestrator:
             await self._sync_all_projects()
         else:
             await self._sync_single_project(project_name)
+
+        # tmux-resurrectで状態を保存（continuum代替）
+        self._save_tmux_resurrect()
 
         print(f"[sync] END", file=sys.stderr)
 
