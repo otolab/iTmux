@@ -182,9 +182,6 @@ class ProjectOrchestrator:
     async def sync(self, project_name: Optional[str] = None, sync_all: bool = False) -> None:
         """プロジェクトの状態を同期（tmuxセッション → config.json）.
 
-        tmuxセッションが存在しない場合（全ウィンドウ削除でセッション終了）、
-        プロジェクトをconfig.jsonから削除し、gateway情報もクリアします。
-
         Args:
             project_name: プロジェクト名（省略時は環境変数から取得、sync_all=Trueの場合は無視）
             sync_all: 全プロジェクトの整合性をチェック（session-closed hookから呼ばれる）
@@ -195,18 +192,42 @@ class ProjectOrchestrator:
         import sys
         print(f"[sync] START pid={os.getpid()}", file=sys.stderr)
 
-        # sync_all=Trueの場合、全プロジェクトをチェック
         if sync_all:
-            print(f"[sync] Checking all projects", file=sys.stderr)
-            for proj_name in self.config.list_projects():
-                if not self._tmux_has_session(proj_name):
-                    print(f"[sync] Deleting project without session: {proj_name}", file=sys.stderr)
-                    try:
-                        self.config.delete_project(proj_name)
-                    except Exception:
-                        pass
-            print(f"[sync] END (all projects checked)", file=sys.stderr)
-            return
+            await self._sync_all_projects()
+        else:
+            await self._sync_single_project(project_name)
+
+        print(f"[sync] END", file=sys.stderr)
+
+    async def _sync_all_projects(self) -> None:
+        """全プロジェクトの整合性をチェック（session-closed hookから呼ばれる）.
+
+        セッションが存在しないプロジェクトをconfig.jsonから削除します。
+        """
+        import sys
+        print(f"[sync] Checking all projects", file=sys.stderr)
+
+        for proj_name in self.config.list_projects():
+            if not self._tmux_has_session(proj_name):
+                print(f"[sync] Deleting project without session: {proj_name}", file=sys.stderr)
+                try:
+                    self.config.delete_project(proj_name)
+                except Exception:
+                    pass
+
+    async def _sync_single_project(self, project_name: Optional[str] = None) -> None:
+        """単一プロジェクトの状態を同期（tmuxセッション → config.json）.
+
+        tmuxセッションが存在しない場合、プロジェクトをconfig.jsonから削除します。
+        セッションが存在する場合、ウィンドウリストをconfig.jsonに反映します。
+
+        Args:
+            project_name: プロジェクト名（省略時は環境変数から取得）
+
+        Raises:
+            ProjectNotFoundError: プロジェクトが存在しない
+        """
+        import sys
 
         # 1. プロジェクト名決定
         project_name = self._resolve_project_name(project_name)
@@ -221,10 +242,9 @@ class ProjectOrchestrator:
             except Exception:
                 # プロジェクトが既に存在しない場合は無視
                 pass
-            print(f"[sync] END (session deleted)", file=sys.stderr)
             return
 
-        # 3. tmuxセッションから実際のウィンドウリストを取得（tmuxコマンド直接実行）
+        # 3. tmuxセッションから実際のウィンドウリストを取得
         print(f"[sync] Getting tmux windows", file=sys.stderr)
         windows_config = self._get_tmux_windows_direct(project_name)
         print(f"[sync] Got {len(windows_config)} windows", file=sys.stderr)
@@ -239,8 +259,6 @@ class ProjectOrchestrator:
                 print(f"[sync] Project not found, creating", file=sys.stderr)
                 self.config.create_project(project_name, windows_config)
                 print(f"[sync] Project created", file=sys.stderr)
-
-        print(f"[sync] END", file=sys.stderr)
 
     async def close(self, project_name: Optional[str] = None) -> None:
         """プロジェクトを閉じる（自動同期）.

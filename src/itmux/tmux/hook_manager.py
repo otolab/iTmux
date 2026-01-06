@@ -10,6 +10,33 @@ class HookManager:
     プロジェクトの自動同期のため、window作成・削除・名前変更時のhookを設定します。
     """
 
+    @staticmethod
+    def _build_hook_command(project_name: str, itmux_command: str = "itmux") -> str:
+        """単一プロジェクトのsyncコマンドを生成.
+
+        Args:
+            project_name: プロジェクト名
+            itmux_command: itmuxコマンドのパス
+
+        Returns:
+            str: hookから実行するコマンド文字列
+        """
+        current_path = os.environ.get("PATH", "")
+        return f"PATH={current_path} {itmux_command} sync {project_name} >> ~/.itmux/hook.log 2>&1 || true"
+
+    @staticmethod
+    def _build_sync_all_command(itmux_command: str = "itmux") -> str:
+        """全プロジェクトのsync --allコマンドを生成.
+
+        Args:
+            itmux_command: itmuxコマンドのパス
+
+        Returns:
+            str: hookから実行するコマンド文字列
+        """
+        current_path = os.environ.get("PATH", "")
+        return f"PATH={current_path} {itmux_command} sync --all >> ~/.itmux/hook.log 2>&1 || true"
+
     async def setup_hooks(
         self,
         tmux_conn: iterm2.TmuxConnection,
@@ -23,11 +50,8 @@ class HookManager:
             project_name: プロジェクト名
             itmux_command: itmuxコマンドのパス（デフォルト: "itmux"）
         """
-        # hookから実行されるコマンドにPATHを含める
-        # uvコマンドが見つかるように環境変数を設定
-        current_path = os.environ.get("PATH", "")
-        # ログファイルに出力（エスケープを避けるためシンプルに）
-        hook_command = f"PATH={current_path} {itmux_command} sync {project_name} >> ~/.itmux/hook.log 2>&1 || true"
+        # セッションスコープのhookで使用するコマンド
+        hook_command = self._build_hook_command(project_name, itmux_command)
 
         # run-shell -b を使って外部コマンドをバックグラウンド実行
         # -b: バックグラウンド実行（デッドロック防止）
@@ -49,8 +73,7 @@ class HookManager:
         # session終了時のhook（グローバルスコープ）
         # 全プロジェクトの整合性をチェック（-gで上書き、-agではない）
         # どのセッションが閉じても、全プロジェクトをチェックして存在しないセッションを削除
-        # 注意: project_nameは使わず、--allで全体チェック
-        sync_all_command = f"PATH={current_path} {itmux_command} sync --all >> ~/.itmux/hook.log 2>&1 || true"
+        sync_all_command = self._build_sync_all_command(itmux_command)
         await tmux_conn.async_send_command(
             f"set-hook -g session-closed \"run-shell -b '{sync_all_command}'\""
         )
