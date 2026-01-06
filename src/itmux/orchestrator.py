@@ -110,8 +110,42 @@ class ProjectOrchestrator:
                 return candidate
             counter += 1
 
-    def _save_tmux_resurrect(self) -> None:
+    @staticmethod
+    def _should_save_resurrect(project_name: str, debounce_seconds: float = 1.0) -> bool:
+        """tmux-resurrect保存のdebounce判定.
+
+        Args:
+            project_name: プロジェクト名
+            debounce_seconds: debounce時間（秒）
+
+        Returns:
+            bool: 保存を実行すべき場合True
+        """
+        import time
+        from pathlib import Path
+
+        lock_file = Path.home() / ".itmux" / f".last_save_{project_name}"
+        now = time.time()
+
+        if lock_file.exists():
+            try:
+                last = float(lock_file.read_text().strip())
+                if now - last < debounce_seconds:
+                    return False  # 指定秒数以内なのでスキップ
+            except (ValueError, OSError):
+                pass  # ファイル読み取り失敗時は実行
+
+        # タイムスタンプ更新
+        lock_file.parent.mkdir(parents=True, exist_ok=True)
+        lock_file.write_text(str(now))
+        return True
+
+    def _save_tmux_resurrect(self, debounce: bool = False, project_name: str = "") -> None:
         """tmux-resurrectで状態を保存.
+
+        Args:
+            debounce: debounce判定を行うか
+            project_name: debounce判定用のプロジェクト名（debounce=Trueの場合必須）
 
         tmux-continuumの自動保存の代替として、sync時に手動で保存を実行します。
         tmux-resurrectの保存スクリプトが存在する場合のみ実行します。
@@ -119,6 +153,15 @@ class ProjectOrchestrator:
         import sys
         import subprocess
         from pathlib import Path
+
+        # debounce判定
+        if debounce:
+            if not project_name:
+                print(f"[save] Error: project_name required for debounce", file=sys.stderr)
+                return
+            if not self._should_save_resurrect(project_name):
+                print(f"[save] Skipped (debounce)", file=sys.stderr)
+                return
 
         save_script = Path.home() / ".tmux" / "plugins" / "tmux-resurrect" / "scripts" / "save.sh"
 
@@ -135,13 +178,13 @@ class ProjectOrchestrator:
                 check=False
             )
             if result.returncode != 0:
-                print(f"[sync] tmux-resurrect save failed: {result.stderr}", file=sys.stderr)
+                print(f"[save] tmux-resurrect save failed: {result.stderr}", file=sys.stderr)
             else:
-                print(f"[sync] tmux-resurrect saved", file=sys.stderr)
+                print(f"[save] tmux-resurrect saved", file=sys.stderr)
         except subprocess.TimeoutExpired:
-            print(f"[sync] tmux-resurrect save timeout", file=sys.stderr)
+            print(f"[save] tmux-resurrect save timeout", file=sys.stderr)
         except Exception as e:
-            print(f"[sync] tmux-resurrect save error: {e}", file=sys.stderr)
+            print(f"[save] tmux-resurrect save error: {e}", file=sys.stderr)
 
     def list(self) -> dict:
         """プロジェクト一覧取得.
@@ -232,6 +275,32 @@ class ProjectOrchestrator:
         self._save_tmux_resurrect()
 
         print(f"[sync] END", file=sys.stderr)
+
+    def save(self, project_name: Optional[str] = None, debounce: bool = False) -> None:
+        """tmux-resurrectで状態を保存.
+
+        Args:
+            project_name: プロジェクト名（debounce=Trueの場合は必須、省略時は環境変数から取得）
+            debounce: debounce判定を行うか（連続実行の防止）
+
+        Raises:
+            ProjectNotFoundError: project_nameが必要だが指定されていない
+        """
+        import sys
+        print(f"[save] START pid={os.getpid()}", file=sys.stderr)
+
+        # debounce有効時はproject_name必須
+        if debounce:
+            if not project_name:
+                project_name = os.environ.get("ITMUX_PROJECT")
+            if not project_name:
+                print(f"[save] Error: project_name required for debounce", file=sys.stderr)
+                return
+
+        # tmux-resurrect保存実行
+        self._save_tmux_resurrect(debounce=debounce, project_name=project_name or "")
+
+        print(f"[save] END", file=sys.stderr)
 
     async def _sync_all_projects(self) -> None:
         """全プロジェクトの整合性をチェック（session-closed hookから呼ばれる）.

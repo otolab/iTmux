@@ -92,6 +92,19 @@ def sync(project: str | None, all: bool):
 
 @main.command()
 @click.argument("project", required=False)
+@click.option("--debounce", is_flag=True, help="Enable debounce (skip if saved within 1 second)")
+def save(project: str | None, debounce: bool):
+    """Save tmux session state with tmux-resurrect."""
+    async def _save():
+        orchestrator = await get_orchestrator()
+        orchestrator.save(project, debounce=debounce)
+
+    message = f"✓ Saved session: {project or 'current'}"
+    run_async_command(_save(), message, handle_value_error=True)
+
+
+@main.command()
+@click.argument("project", required=False)
 def close(project: str | None):
     """Close and detach a project window set."""
     async def _close():

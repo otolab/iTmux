@@ -10,60 +10,51 @@ class HookManager:
     プロジェクトの自動同期のため、window/pane操作時のhookを設定します。
     """
 
-    # セッションスコープのhook定義（hook名, 説明, debounce有効）
+    # セッションスコープのhook定義（hook名, 説明, sync必要, save必要, debounce有効）
     # 将来的な追加・削除を容易にするためリストで管理
     SESSION_HOOKS = [
-        ("after-new-window", "ウィンドウ作成時", False),
-        ("window-unlinked", "ウィンドウ削除時", False),
-        ("after-split-window", "pane分割時", False),
-        ("after-kill-pane", "pane削除時", False),
-        ("after-resize-pane", "paneリサイズ時", True),  # debounce有効
+        ("after-new-window", "ウィンドウ作成時", True, True, False),
+        ("window-unlinked", "ウィンドウ削除時", True, True, False),
+        ("after-split-window", "pane分割時", False, True, False),
+        ("after-kill-pane", "pane削除時", False, True, False),
+        ("after-resize-pane", "paneリサイズ時", False, True, True),
     ]
 
     @staticmethod
-    def _build_hook_command(project_name: str, itmux_command: str = "itmux") -> str:
-        """単一プロジェクトのsyncコマンドを生成.
+    def _build_hook_command(
+        project_name: str,
+        needs_sync: bool,
+        needs_save: bool,
+        use_debounce: bool,
+        itmux_command: str = "itmux"
+    ) -> str:
+        """hookコマンドを生成.
 
         Args:
             project_name: プロジェクト名
+            needs_sync: sync実行が必要か
+            needs_save: save実行が必要か
+            use_debounce: debounceが必要か
             itmux_command: itmuxコマンドのパス
 
         Returns:
             str: hookから実行するコマンド文字列
         """
         current_path = os.environ.get("PATH", "")
-        return f"PATH={current_path} {itmux_command} sync {project_name} >> ~/.itmux/hook.log 2>&1 || true"
+        commands = []
 
-    @staticmethod
-    def _build_debounced_hook_command(
-        project_name: str,
-        hook_name: str,
-        itmux_command: str = "itmux",
-        debounce_seconds: int = 1
-    ) -> str:
-        """debounce付きhookコマンドを生成.
+        if needs_sync:
+            commands.append(f"{itmux_command} sync {project_name}")
 
-        Args:
-            project_name: プロジェクト名
-            hook_name: hook名（ロックファイル識別用）
-            itmux_command: itmuxコマンドのパス
-            debounce_seconds: debounce時間（秒）
+        if needs_save:
+            save_cmd = f"{itmux_command} save {project_name}"
+            if use_debounce:
+                save_cmd += " --debounce"
+            commands.append(save_cmd)
 
-        Returns:
-            str: debounce付きhookから実行するコマンド文字列
-        """
-        current_path = os.environ.get("PATH", "")
-        # シェルスクリプトでdebounceを実装
-        # ロックファイルに最後の実行時刻を記録し、指定秒数以内は実行しない
-        return (
-            f"LOCK=~/.itmux/.lock_{project_name}_{hook_name}; "
-            f"NOW=$(date +%s); "
-            f"LAST=$(cat $LOCK 2>/dev/null || echo 0); "
-            f"if [ $((NOW - LAST)) -ge {debounce_seconds} ]; then "
-            f"echo $NOW > $LOCK; "
-            f"PATH={current_path} {itmux_command} sync {project_name} >> ~/.itmux/hook.log 2>&1 || true; "
-            f"fi"
-        )
+        # 複数コマンドを && で連結
+        command = " && ".join(commands)
+        return f"PATH={current_path} {command} >> ~/.itmux/hook.log 2>&1 || true"
 
     @staticmethod
     def _build_sync_all_command(itmux_command: str = "itmux") -> str:
@@ -78,6 +69,17 @@ class HookManager:
         current_path = os.environ.get("PATH", "")
         return f"PATH={current_path} {itmux_command} sync --all >> ~/.itmux/hook.log 2>&1 || true"
 
+    @staticmethod
+    def _check_resurrect_installed() -> bool:
+        """tmux-resurrectがインストールされているかチェック.
+
+        Returns:
+            bool: インストール済みの場合True
+        """
+        from pathlib import Path
+        save_script = Path.home() / ".tmux" / "plugins" / "tmux-resurrect" / "scripts" / "save.sh"
+        return save_script.exists()
+
     async def setup_hooks(
         self,
         tmux_conn: iterm2.TmuxConnection,
@@ -91,17 +93,24 @@ class HookManager:
             project_name: プロジェクト名
             itmux_command: itmuxコマンドのパス（デフォルト: "itmux"）
         """
+        import sys
+
+        # tmux-resurrectの有無を確認
+        resurrect_available = self._check_resurrect_installed()
+        if not resurrect_available:
+            print("⚠️  tmux-resurrect not installed, pane layouts won't be saved", file=sys.stderr)
+
         # run-shell -b を使って外部コマンドをバックグラウンド実行
         # -b: バックグラウンド実行（デッドロック防止）
-        for hook_name, description, use_debounce in self.SESSION_HOOKS:
-            if use_debounce:
-                # debounce付きhookコマンド
-                command = self._build_debounced_hook_command(
-                    project_name, hook_name, itmux_command
-                )
-            else:
-                # 通常のhookコマンド
-                command = self._build_hook_command(project_name, itmux_command)
+        for hook_name, description, needs_sync, needs_save, use_debounce in self.SESSION_HOOKS:
+            # tmux-resurrect必要だが未インストールの場合はスキップ
+            if needs_save and not resurrect_available:
+                continue
+
+            # hookコマンド生成
+            command = self._build_hook_command(
+                project_name, needs_sync, needs_save, use_debounce, itmux_command
+            )
 
             await tmux_conn.async_send_command(
                 f"set-hook -t {project_name} {hook_name} \"run-shell -b '{command}'\""
@@ -130,7 +139,7 @@ class HookManager:
         """
         try:
             # セッションスコープのhookを削除（-u オプション）
-            for hook_name, _, _ in self.SESSION_HOOKS:
+            for hook_name, _, _, _, _ in self.SESSION_HOOKS:
                 await tmux_conn.async_send_command(
                     f"set-hook -u -t {project_name} {hook_name}"
                 )
