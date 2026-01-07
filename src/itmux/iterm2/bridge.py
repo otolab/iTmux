@@ -100,6 +100,10 @@ class ITerm2Bridge:
                         raise ITerm2Error(f"TmuxConnection not established after 2 seconds for project: {project_name}")
                     continue
 
+            # Connection確立後、tmux paneの初期化完了を待つ
+            # Connection確立 ≠ paneが入力を受け付ける準備完了
+            await asyncio.sleep(1.0)
+
         except Exception as e:
             raise ITerm2Error(f"Failed to connect to session: {e}") from e
 
@@ -164,6 +168,7 @@ class ITerm2Bridge:
 
             # 新しいウィンドウを作成（openと同じ方法）
             iterm_window = await tmux_conn.async_create_window()
+            await iterm_window.async_activate()
 
             # iTerm2ウィンドウにタグ付け（user.window_nameにIDを設定）
             await self.window_manager.tag_window(iterm_window, project_name, window_name)
@@ -250,6 +255,12 @@ class ITerm2Bridge:
         else:
             # 新しいウィンドウを作成
             iterm_window = await tmux_conn.async_create_window()
+
+            # フロー制御（%pause）によるview-mode遷移を防ぐため、
+            # ウィンドウ作成直後にアクティブ化してPaused状態から復帰させる
+            # 参考: docs/ideas/Tmuxウィンドウがview-modeに入る現象.md 6.2節
+            await asyncio.sleep(0.1)
+            await iterm_window.async_activate()
 
             # iTerm2ウィンドウにタグ付け（user.window_nameにIDを設定）
             await self.window_manager.tag_window(iterm_window, project_name, window_config.name)

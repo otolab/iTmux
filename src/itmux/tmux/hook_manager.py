@@ -42,11 +42,14 @@ class HookManager:
         """
         current_path = os.environ.get("PATH", "")
         config_path = os.environ.get("ITMUX_CONFIG_PATH", "")
+        itmux_command_env = os.environ.get("ITMUX_COMMAND", "")
 
-        # 環境変数の設定（PATHは必須、ITMUX_CONFIG_PATHはあれば設定）
+        # 環境変数の設定
         env_vars = f"PATH={current_path}"
         if config_path:
             env_vars += f" ITMUX_CONFIG_PATH={config_path}"
+        if itmux_command_env:
+            env_vars += f" ITMUX_COMMAND={itmux_command_env}"
 
         commands = []
 
@@ -61,7 +64,8 @@ class HookManager:
 
         # 複数コマンドを && で連結
         command = " && ".join(commands)
-        return f"{env_vars} {command} >> ~/.itmux/hook.log 2>&1 || true"
+        # 全体を括弧で囲んでからリダイレクト（echoの出力も含めてリダイレクトする）
+        return f"({env_vars} {command}) >> ~/.itmux/hook.log 2>&1 || true"
 
     @staticmethod
     def _build_sync_all_command(itmux_command: str = "itmux") -> str:

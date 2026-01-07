@@ -30,6 +30,37 @@ iTmuxを使用するには、iTerm2で以下の設定を有効にする必要が
 
 この設定により、tmux Control Mode接続時に作成されるgatewayウィンドウが自動的に非表示になります。
 
+### おすすめのtmux設定（Homebrew使用時）
+
+**macOSでHomebrewを使用してtmuxをインストールしている場合**、iTmuxのhook機能（自動同期・自動保存）を動作させるため、`~/.tmux.conf`に以下の設定を追加することをおすすめします：
+
+```tmux
+# --- プラグイン設定 ---
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+# ... 他のプラグイン設定 ...
+
+# --- TPMの初期化（必ず末尾に記述） ---
+run '~/.tmux/plugins/tpm/tpm'
+
+# --- iTmux: hookからtmuxコマンドを実行するため、Homebrewのパスを追加 ---
+# 重要: TPM初期化の後に書くこと
+set-environment -g PATH "/opt/homebrew/bin:$PATH"
+```
+
+**ポイント**:
+- TPM（Tmux Plugin Manager）の初期化（`run '~/.tmux/plugins/tpm/tpm'`）**より後**に書く
+- tmuxの`run-shell`は非ログインシェルで起動されるため、hookからtmuxコマンドを使うにはPATHの設定が必要
+
+設定後、tmuxサーバーを再起動してください：
+```bash
+tmux kill-server
+```
+
+**注意**:
+- この設定は**Homebrew使用時のみ**必要です。システム標準のtmuxを使用している場合は不要です
+- 環境によっては、この設定がtmux起動時の問題を引き起こす場合があります。その場合は、この設定を削除し、iTmuxを起動したシェルのPATHに`/opt/homebrew/bin`が含まれていることを確認してください
+
 ### 推奨設定
 
 **ウィンドウを閉じる時の挙動**

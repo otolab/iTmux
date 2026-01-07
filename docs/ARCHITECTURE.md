@@ -13,6 +13,33 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Mode（`-CC`）を統合し、�
 - tmuxウィンドウ: セッション内の作業環境（1ウィンドウ = iTerm2の1ウィンドウ）
 - ユーザー変数: iTerm2ウィンドウに付与されるメタデータ（`user.projectID`）
 
+### 前提条件
+
+#### tmux環境変数の設定（Homebrew使用時）
+
+**macOSでHomebrewを使用してtmuxをインストールしている場合**、iTmuxのhook機能が動作するには、tmuxのグローバル環境変数`PATH`を設定することをおすすめします。
+
+**`~/.tmux.conf`に追加（TPM初期化の後）：**
+```tmux
+# --- TPMの初期化 ---
+run '~/.tmux/plugins/tpm/tpm'
+
+# --- iTmux: hookからtmuxコマンドを実行するため ---
+set-environment -g PATH "/opt/homebrew/bin:$PATH"
+```
+
+**技術的背景：**
+
+1. **hookの実行環境**: tmuxの`run-shell -b`は**非ログインシェル**で起動される
+2. **PATH問題**: 非ログインシェルはシェル初期化ファイル（`.zprofile`、`.bash_profile`等）を読み込まない
+3. **結果**: `tmux show-environment -g PATH`が返すのはシステムデフォルトのPATHのみ（`/usr/bin:/bin:/usr/sbin:/sbin`）
+4. **解決策**: tmuxのグローバル環境変数として明示的にPATHを設定する
+5. **順序の重要性**: TPM初期化より後に設定することで、tmux起動時の問題を回避
+
+この設定により、hookから実行される`itmux sync/save`がtmuxコマンドを正しく見つけられるようになります。
+
+**注意**: システム標準のtmuxを使用している場合、この設定は不要です。
+
 ## システムアーキテクチャ
 
 ```

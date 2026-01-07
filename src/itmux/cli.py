@@ -62,7 +62,11 @@ def run_async_command(coro, success_message: str, handle_value_error: bool = Fal
 @click.version_option()
 def main():
     """iTerm2 + tmux orchestration tool for project-based window management."""
-    pass
+    # hookから呼び出すコマンドパスを環境変数に設定（未設定の場合のみ）
+    if "ITMUX_COMMAND" not in os.environ:
+        # sys.argv[0]を絶対パスに変換
+        command_path = os.path.abspath(sys.argv[0])
+        os.environ["ITMUX_COMMAND"] = command_path
 
 
 @main.command()

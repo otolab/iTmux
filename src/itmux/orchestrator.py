@@ -35,6 +35,7 @@ class ProjectOrchestrator:
         result = subprocess.run(
             ["tmux", "has-session", "-t", session_name],
             capture_output=True,
+            env=os.environ.copy()
         )
         return result.returncode == 0
 
@@ -75,7 +76,8 @@ class ProjectOrchestrator:
                         ["tmux", "display-message", "-p", "#{session_name}"],
                         capture_output=True,
                         text=True,
-                        check=True
+                        check=True,
+                        env=os.environ.copy()
                     )
                     project_name = result.stdout.strip()
                     if project_name:
@@ -170,12 +172,14 @@ class ProjectOrchestrator:
             return
 
         try:
+            # subprocess.runに明示的に環境変数を渡す（hookから実行される場合のPATH問題対策）
             result = subprocess.run(
                 [str(save_script)],
                 capture_output=True,
                 text=True,
                 timeout=5,
-                check=False
+                check=False,
+                env=os.environ.copy()
             )
             if result.returncode != 0:
                 print(f"[save] tmux-resurrect save failed: {result.stderr}", file=sys.stderr)
@@ -216,6 +220,7 @@ class ProjectOrchestrator:
         result = subprocess.run(
             ["tmux", "ls"],
             capture_output=True,
+            env=os.environ.copy()
         )
         return result.returncode == 0
 

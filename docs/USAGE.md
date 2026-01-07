@@ -42,6 +42,43 @@ export PATH="$PATH:$(pwd)/scripts"
 2. メニュー: **iTerm2 > Preferences > General > Magic**
 3. **Enable Python API** にチェック
 
+### おすすめのtmux設定（Homebrew使用時）
+
+**macOSでHomebrewを使用してtmuxをインストールしている場合**、iTmuxのhook機能（自動同期・自動保存）を動作させるため、`~/.tmux.conf`に以下の設定を追加することをおすすめします：
+
+```tmux
+# --- プラグイン設定 ---
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+# ... 他のプラグイン設定 ...
+
+# --- TPMの初期化（必ず末尾に記述） ---
+run '~/.tmux/plugins/tpm/tpm'
+
+# --- iTmux: hookからtmuxコマンドを実行するため、Homebrewのパスを追加 ---
+# 重要: TPM初期化の後に書くこと
+set-environment -g PATH "/opt/homebrew/bin:$PATH"
+```
+
+**理由**:
+- tmuxの`run-shell`は非ログインシェルで起動されるため、シェル初期化ファイル（`.zprofile`、`.bash_profile`等）が読み込まれません
+- hookから実行される`itmux sync/save`がtmuxコマンドを使うため、PATHの設定が必要
+
+**設定手順**:
+
+1. `~/.tmux.conf`を編集して上記の設定を追加
+   - **重要**: TPM初期化（`run '~/.tmux/plugins/tpm/tpm'`）**より後**に書くこと
+2. tmuxサーバーを再起動：
+   ```bash
+   tmux kill-server
+   ```
+3. iTmuxを使用して新しいプロジェクトを開く
+
+**注意**:
+- この設定は**Homebrew使用時のみ**必要です。システム標準のtmuxや、他の方法でインストールしたtmuxを使用している場合は不要です
+- Intel Mac（`/usr/local/bin`）の場合は、パスを環境に合わせて調整してください
+- 環境によっては、この設定がtmux起動時の問題を引き起こす場合があります。その場合は、この設定を削除してください
+
 ### iTerm2の推奨設定
 
 #### tmux統合の自動埋葬
