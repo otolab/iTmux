@@ -162,34 +162,13 @@ class TestClose:
         assert "✓ Closed project: current" in result.output
         mock_orchestrator.close.assert_called_once_with(None)
 
-    def test_close_with_environment_variable(self, monkeypatch):
-        """環境変数ITMUX_PROJECTを使ってプロジェクトを閉じる."""
-        runner = CliRunner()
-
-        # 環境変数を設定
-        monkeypatch.setenv("ITMUX_PROJECT", "test-project")
-
-        mock_orchestrator = AsyncMock()
-        mock_orchestrator.close = AsyncMock()
-
-        async def mock_get_orchestrator():
-            return mock_orchestrator
-
-        with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
-            result = runner.invoke(main, ["close"])
-
-        assert result.exit_code == 0
-        assert "✓ Closed project: current" in result.output
-        # 環境変数からプロジェクト名が取得され、closeに渡される（Noneが渡される）
-        mock_orchestrator.close.assert_called_once_with(None)
-
     def test_close_no_project_specified_error(self):
         """プロジェクト名未指定エラー."""
         runner = CliRunner()
 
         mock_orchestrator = AsyncMock()
         mock_orchestrator.close.side_effect = ValueError(
-            "No project specified and ITMUX_PROJECT not set"
+            "No project specified and not running in tmux session"
         )
 
         async def mock_get_orchestrator():
@@ -255,3 +234,42 @@ class TestAdd:
         assert result.exit_code == 0
         assert "✓ Added window to project: current" in result.output
         mock_orchestrator.add.assert_called_once_with(None, None)
+
+
+class TestCurrent:
+    """currentコマンドのテスト."""
+
+    def test_current_success(self):
+        """現在のプロジェクト名を取得（成功）."""
+        runner = CliRunner()
+
+        mock_orchestrator = MagicMock()
+        mock_orchestrator.current.return_value = "test-project"
+
+        async def mock_get_orchestrator():
+            return mock_orchestrator
+
+        with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
+            result = runner.invoke(main, ["current"])
+
+        assert result.exit_code == 0
+        assert "test-project" in result.output
+        mock_orchestrator.current.assert_called_once()
+
+    def test_current_not_in_tmux(self):
+        """tmuxセッション外でエラー."""
+        runner = CliRunner()
+
+        mock_orchestrator = MagicMock()
+        mock_orchestrator.current.side_effect = ValueError(
+            "No project specified and not running in tmux session"
+        )
+
+        async def mock_get_orchestrator():
+            return mock_orchestrator
+
+        with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
+            result = runner.invoke(main, ["current"])
+
+        assert result.exit_code == 1
+        assert "✗ Error: No project specified and not running in tmux session" in result.output

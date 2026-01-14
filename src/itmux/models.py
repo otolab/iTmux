@@ -43,9 +43,21 @@ class ProjectConfig(BaseModel):
     """プロジェクト設定."""
 
     name: str = Field(min_length=1, description="プロジェクト名")
+    description: Optional[str] = Field(default=None, description="プロジェクトの説明")
     tmux_windows: list[WindowConfig] = Field(
         default_factory=list, description="tmuxウィンドウリスト"
     )
+
+    @field_validator("name")
+    @classmethod
+    def validate_project_name(cls, v: str) -> str:
+        """tmux互換の命名規則を検証."""
+        # tmuxセッション名で使用不可な文字
+        invalid_chars = [".", ":"]
+        for char in invalid_chars:
+            if char in v:
+                raise ValueError(f'project name cannot contain "{char}"')
+        return v
 
     @field_validator("tmux_windows")
     @classmethod

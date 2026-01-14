@@ -1,6 +1,7 @@
 """tmux hookの管理."""
 
 import os
+import shlex
 import iterm2
 
 
@@ -44,12 +45,12 @@ class HookManager:
         config_path = os.environ.get("ITMUX_CONFIG_PATH", "")
         itmux_command_env = os.environ.get("ITMUX_COMMAND", "")
 
-        # 環境変数の設定
-        env_vars = f"PATH={current_path}"
+        # 環境変数の設定（shlex.quote()で安全にエスケープ）
+        env_vars = f"PATH={shlex.quote(current_path)}"
         if config_path:
-            env_vars += f" ITMUX_CONFIG_PATH={config_path}"
+            env_vars += f" ITMUX_CONFIG_PATH={shlex.quote(config_path)}"
         if itmux_command_env:
-            env_vars += f" ITMUX_COMMAND={itmux_command_env}"
+            env_vars += f" ITMUX_COMMAND={shlex.quote(itmux_command_env)}"
 
         commands = []
 
@@ -80,10 +81,10 @@ class HookManager:
         current_path = os.environ.get("PATH", "")
         config_path = os.environ.get("ITMUX_CONFIG_PATH", "")
 
-        # 環境変数の設定
-        env_vars = f"PATH={current_path}"
+        # 環境変数の設定（shlex.quote()で安全にエスケープ）
+        env_vars = f"PATH={shlex.quote(current_path)}"
         if config_path:
-            env_vars += f" ITMUX_CONFIG_PATH={config_path}"
+            env_vars += f" ITMUX_CONFIG_PATH={shlex.quote(config_path)}"
 
         return f"{env_vars} {itmux_command} sync --all >> ~/.itmux/hook.log 2>&1 || true"
 
@@ -130,16 +131,19 @@ class HookManager:
                 project_name, needs_sync, needs_save, use_debounce, itmux_command
             )
 
+            # run-shell の引数全体を shlex.quote() でエスケープ
+            hook_command = f"run-shell -b {shlex.quote(command)}"
             await tmux_conn.async_send_command(
-                f"set-hook -t {project_name} {hook_name} \"run-shell -b '{command}'\""
+                f"set-hook -t {project_name} {hook_name} {shlex.quote(hook_command)}"
             )
 
         # session終了時のhook（グローバルスコープ）
         # 全プロジェクトの整合性をチェック（-gで上書き、-agではない）
         # どのセッションが閉じても、全プロジェクトをチェックして存在しないセッションを削除
         sync_all_command = self._build_sync_all_command(itmux_command)
+        global_hook_command = f"run-shell -b {shlex.quote(sync_all_command)}"
         await tmux_conn.async_send_command(
-            f"set-hook -g session-closed \"run-shell -b '{sync_all_command}'\""
+            f"set-hook -g session-closed {shlex.quote(global_hook_command)}"
         )
 
     async def remove_hooks(

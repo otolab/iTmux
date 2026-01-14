@@ -57,7 +57,7 @@ class ProjectOrchestrator:
         return result
 
     def _resolve_project_name(self, project_name: Optional[str]) -> str:
-        """プロジェクト名を解決（引数 or tmux session or 環境変数）.
+        """プロジェクト名を解決（引数 or tmux session）.
 
         Args:
             project_name: プロジェクト名（Noneの場合は自動検出）
@@ -66,10 +66,10 @@ class ProjectOrchestrator:
             str: 解決されたプロジェクト名
 
         Raises:
-            ValueError: プロジェクト名が指定されておらず、tmuxセッションからも環境変数からも取得できない
+            ValueError: プロジェクト名が指定されておらず、tmuxセッションからも取得できない
         """
         if project_name is None:
-            # 1. tmux内で実行されている場合、session名を取得
+            # tmux内で実行されている場合、session名を取得
             if os.environ.get("TMUX"):
                 try:
                     result = subprocess.run(
@@ -83,13 +83,9 @@ class ProjectOrchestrator:
                     if project_name:
                         return project_name
                 except Exception:
-                    # tmuxコマンド失敗時は次の方法を試す
                     pass
 
-            # 2. 環境変数から取得（後方互換性）
-            project_name = os.environ.get("ITMUX_PROJECT")
-            if project_name is None:
-                raise ValueError("No project specified and ITMUX_PROJECT not set")
+            raise ValueError("No project specified and not running in tmux session")
 
         return project_name
 
@@ -198,7 +194,8 @@ class ProjectOrchestrator:
                 {
                     "project-name": {
                         "windows": ["window1", "window2"],
-                        "count": 2
+                        "count": 2,
+                        "description": "プロジェクトの説明" (Optional)
                     }
                 }
         """
@@ -208,6 +205,7 @@ class ProjectOrchestrator:
             result[project_name] = {
                 "windows": [w.name for w in project.tmux_windows],
                 "count": len(project.tmux_windows),
+                "description": project.description,
             }
         return result
 
@@ -303,14 +301,11 @@ class ProjectOrchestrator:
         itmux_command = os.environ.get("ITMUX_COMMAND", "itmux")
         await self.bridge.setup_hooks(project_name, itmux_command=itmux_command)
 
-        # 5. 環境変数設定
-        os.environ["ITMUX_PROJECT"] = project_name
-
     async def sync(self, project_name: Optional[str] = None, sync_all: bool = False) -> None:
         """プロジェクトの状態を同期（tmuxセッション → config.json）.
 
         Args:
-            project_name: プロジェクト名（省略時は環境変数から取得、sync_all=Trueの場合は無視）
+            project_name: プロジェクト名（省略時はtmux sessionから自動検出、sync_all=Trueの場合は無視）
             sync_all: 全プロジェクトの整合性をチェック（session-closed hookから呼ばれる）
 
         Raises:
@@ -333,11 +328,11 @@ class ProjectOrchestrator:
         """tmux-resurrectで状態を保存.
 
         Args:
-            project_name: プロジェクト名（debounce=Trueの場合は必須、省略時は環境変数から取得）
+            project_name: プロジェクト名（debounce=Trueの場合は必須、省略時はtmux sessionから自動検出）
             debounce: debounce判定を行うか（連続実行の防止）
 
         Raises:
-            ProjectNotFoundError: project_nameが必要だが指定されていない
+            ValueError: project_nameが必要だが指定されていない
         """
         import sys
         print(f"[save] START pid={os.getpid()}", file=sys.stderr)
@@ -345,10 +340,7 @@ class ProjectOrchestrator:
         # debounce有効時はproject_name必須
         if debounce:
             if not project_name:
-                project_name = os.environ.get("ITMUX_PROJECT")
-            if not project_name:
-                print(f"[save] Error: project_name required for debounce", file=sys.stderr)
-                return
+                project_name = self._resolve_project_name(None)
 
         # tmux-resurrect保存実行
         self._save_tmux_resurrect(debounce=debounce, project_name=project_name or "")
@@ -420,7 +412,7 @@ class ProjectOrchestrator:
         """プロジェクトを閉じる（自動同期）.
 
         Args:
-            project_name: プロジェクト名（省略時は環境変数から取得）
+            project_name: プロジェクト名（省略時はtmux sessionから自動検出）
 
         Raises:
             ProjectNotFoundError: プロジェクトが存在しない
@@ -442,14 +434,33 @@ class ProjectOrchestrator:
         import iterm2
         if windows:
             await windows[0].async_activate()
-            await iterm2.MainMenu.async_select_menu_item(
+
+            # メニューアイテムが有効かチェック
+            menu_state = await iterm2.MainMenu.async_get_menu_item_state(
                 self.bridge.connection,
                 "tmux.Detach"
             )
 
-        # 6. 環境変数クリア
-        if "ITMUX_PROJECT" in os.environ:
-            del os.environ["ITMUX_PROJECT"]
+            if menu_state.enabled:
+                await iterm2.MainMenu.async_select_menu_item(
+                    self.bridge.connection,
+                    "tmux.Detach"
+                )
+            else:
+                # メニューが無効な場合はtmuxコマンドで直接detach
+                tmux_conn = await self.bridge.get_tmux_connection(project_name)
+                await tmux_conn.async_send_command("detach-client")
+
+    def current(self) -> str:
+        """現在のプロジェクト名を取得.
+
+        Returns:
+            str: プロジェクト名
+
+        Raises:
+            ValueError: プロジェクト名が解決できない
+        """
+        return self._resolve_project_name(None)
 
     async def add(
         self, project_name: Optional[str] = None, window_name: Optional[str] = None
@@ -457,7 +468,7 @@ class ProjectOrchestrator:
         """プロジェクトに新規ウィンドウ追加.
 
         Args:
-            project_name: プロジェクト名（省略時は環境変数から取得）
+            project_name: プロジェクト名（省略時はtmux sessionから自動検出）
             window_name: ウィンドウ名（省略時は自動生成）
 
         Raises:
@@ -473,6 +484,8 @@ class ProjectOrchestrator:
         # 3. 新規ウィンドウ作成
         await self.bridge.add_window(project_name, window_name)
 
-        # 4. 完了（hookが発火してconfig.jsonに自動追加される）
-        # after-new-window hookにより、itmux sync が実行され、
-        # config.jsonに自動的に追加されるため、手動での追加は不要
+        # 4. 状態を同期（hookも実行されるが、確実性のため明示的に呼ぶ）
+        # after-new-window hookが発火するが、タイミングによっては
+        # user.window_name設定前にsyncが実行される可能性があるため、
+        # tag_window()完了後に明示的にsyncを実行する
+        await self.sync(project_name)

@@ -124,6 +124,30 @@ class TestProjectConfig:
         project = ProjectConfig(name="empty-project")
         assert project.tmux_windows == []
 
+    def test_invalid_project_name_with_colon(self):
+        """プロジェクト名にコロン含むとエラー."""
+        with pytest.raises(ValidationError):
+            ProjectConfig(name="invalid:name")
+
+    def test_invalid_project_name_with_dot(self):
+        """プロジェクト名にドット含むとエラー."""
+        with pytest.raises(ValidationError):
+            ProjectConfig(name="invalid.name")
+
+    def test_project_with_description(self):
+        """説明付きプロジェクト."""
+        project = ProjectConfig(
+            name="my-project",
+            description="This is my project",
+            tmux_windows=[WindowConfig(name="window1")]
+        )
+        assert project.description == "This is my project"
+
+    def test_project_without_description(self):
+        """説明なしプロジェクト（省略可能）."""
+        project = ProjectConfig(name="my-project")
+        assert project.description is None
+
     def test_json_serialization(self):
         """JSON変換."""
         project = ProjectConfig(

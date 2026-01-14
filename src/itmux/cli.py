@@ -146,11 +146,30 @@ def list():
 
         click.echo("Projects:")
         for project_name, info in projects.items():
-            click.echo(f"  {project_name} ({info['count']} windows)")
+            description = f" - {info['description']}" if info.get('description') else ""
+            click.echo(f"  {project_name} ({info['count']} windows){description}")
             for window in info['windows']:
                 click.echo(f"    - {window}")
     except ConfigError as e:
         click.echo(f"✗ Config Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"✗ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+def current():
+    """Show current project name."""
+    async def _current():
+        orchestrator = await get_orchestrator()
+        return orchestrator.current()
+
+    try:
+        project_name = asyncio.run(_current())
+        click.echo(project_name)
+    except ValueError as e:
+        click.echo(f"✗ Error: {e}", err=True)
         sys.exit(1)
     except Exception as e:
         click.echo(f"✗ Unexpected error: {e}", err=True)

@@ -339,34 +339,58 @@ itmux close
 # → monitoring セッションも含めて config.json に保存される
 ```
 
-### 6. 環境変数の活用
+### 6. プロジェクト名の自動検出
 
-iTmuxは `ITMUX_PROJECT` 環境変数でアクティブなプロジェクトを追跡します。
+iTmuxはtmux session内で実行すると、session名から自動的にプロジェクト名を検出します。
 
 ```bash
-# プロジェクトを開くと環境変数が設定される
+# プロジェクトを開く（tmux session名 = プロジェクト名）
 itmux open webapp
-# → export ITMUX_PROJECT=webapp
 
-# 現在のプロジェクトを確認
-echo $ITMUX_PROJECT
-# → webapp
-
-# 環境変数があればプロジェクト名を省略可能
-itmux add           # webapp にセッションを追加
+# tmux session内では、プロジェクト名を省略可能
+itmux add           # webapp にウィンドウを追加
 itmux close         # webapp を閉じる
+itmux sync          # webapp を同期
 
-# プロジェクトを閉じると環境変数がクリアされる
-itmux close
-# → unset ITMUX_PROJECT
+# 現在のプロジェクト名を確認
+itmux current
+# → webapp
 ```
+
+**動作の仕組み**:
+- `itmux open webapp` → tmux session名が `webapp` になる
+- tmux session内で `itmux add` などを実行 → session名から `webapp` を自動検出
+- プロジェクト名を明示的に指定することも可能: `itmux add other-project`
 
 **メリット**:
 - タイプ量が減る
-- 現在のプロジェクトが明確
-- シェル環境に統合しやすい
+- 現在のプロジェクトが明確（`itmux current` で確認）
+- 複数プロジェクトを開いていても、各session内で正しく動作
 
 ## プロジェクト定義
+
+### 命名規則
+
+**プロジェクト名の制約**:
+
+tmuxセッション名として使用されるため、以下の文字は使用できません：
+- `:` (コロン) - tmuxのターゲット指定構文で使用
+- `.` (ドット) - tmuxが自動的にアンダースコアに変換
+
+**使用可能な文字**:
+- 英数字
+- `-` (ハイフン)
+- `_` (アンダースコア)
+- `/` (スラッシュ)
+- `@` (アットマーク)
+
+**推奨される命名例**:
+```
+my-project              # ハイフン区切り
+my_project              # アンダースコア区切り
+systems-track@karte     # @で組織を表現
+karte/systems-track     # /で階層を表現
+```
 
 ### 最小構成
 
@@ -374,6 +398,7 @@ itmux close
 {
   "projects": {
     "simple-project": {
+      "name": "simple-project",
       "tmux_windows": [
         {
           "name": "main"
@@ -382,6 +407,34 @@ itmux close
     }
   }
 }
+```
+
+### プロジェクトの説明
+
+プロジェクトには説明文を追加できます（オプション）：
+
+```json
+{
+  "projects": {
+    "my-project": {
+      "name": "my-project",
+      "description": "開発用のメインプロジェクト",
+      "tmux_windows": [
+        {
+          "name": "editor"
+        }
+      ]
+    }
+  }
+}
+```
+
+説明は `itmux list` コマンドで表示されます：
+
+```
+Projects:
+  my-project (1 windows) - 開発用のメインプロジェクト
+    - editor
 ```
 
 ### ウィンドウサイズ指定

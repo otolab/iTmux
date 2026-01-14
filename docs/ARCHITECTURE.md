@@ -133,14 +133,12 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
    - グローバルのsession-closed: 上書き
    - 何回openしても多重登録されない（冪等性）
 
-7. 環境変数設定
-   export ITMUX_PROJECT=my-project
-
-8. 完了
+7. 完了
    → iTerm2に必要なウィンドウだけが開く
    → 既に開いているウィンドウはそのまま
    → 各ウィンドウに user.projectID, user.window_name タグ
    → tmux hookによる自動同期が有効化
+   → tmux session内では session名からプロジェクト名を自動検出
 ```
 
 ### Close操作（自動同期）
@@ -150,7 +148,7 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
 ```
 1. ユーザー入力
    $ itmux close [project]
-   # project省略時は環境変数 $ITMUX_PROJECT から取得
+   # project省略時はtmux session名から自動検出
 
 2. プロジェクトのiTerm2ウィンドウを検索
    windows = find_windows_by_project("my-project")
@@ -168,10 +166,7 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
    windows[0].async_activate()
    await MainMenu.async_select_menu_item(connection, "tmux.Detach")
 
-6. 環境変数クリア
-   unset ITMUX_PROJECT
-
-7. 完了
+6. 完了
    → iTerm2ウィンドウは全て閉じる
    → tmuxセッションはバックグラウンド継続
    → config.jsonは現在の状態を反映
@@ -182,7 +177,7 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
 ```
 1. ユーザー入力
    $ itmux add [project] [window-name]
-   # project省略時は $ITMUX_PROJECT から取得
+   # project省略時はtmux session名から自動検出
    # window-name省略時は自動生成（例: window-1, window-2）
 
 2. ウィンドウ名決定
@@ -229,7 +224,7 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
    return
 
 3. プロジェクト名決定（単一プロジェクト同期の場合）
-   project_name = 引数 or 環境変数 $ITMUX_PROJECT
+   project_name = 引数 or tmux session名
 
 4. tmuxセッション存在確認
    if not tmux has-session -t project_name:
@@ -320,14 +315,17 @@ itmux list
 ```bash
 # プロジェクトを開く
 itmux open <project>
-# → 環境変数 ITMUX_PROJECT=<project> を設定
+# → tmux session名が <project> になる
 # → config.jsonのセッションを一括アタッチ
 
 # プロジェクトを閉じる
 itmux close [project]
-# → project省略時は $ITMUX_PROJECT から取得
+# → project省略時はtmux session名から自動検出
 # → 現在の状態を自動保存（ウィンドウサイズ、セッションリスト）
-# → 環境変数 ITMUX_PROJECT をクリア
+
+# 現在のプロジェクト名を確認
+itmux current
+# → tmux session名を表示
 ```
 
 ### セッション追加
@@ -342,28 +340,25 @@ itmux add <project> <session-name>
 itmux add <project>
 # → セッション名は自動生成（例: project-1, project-2）
 
-# パターン3: 環境変数使用
+# パターン3: tmux session内で実行（自動検出）
 itmux add
-# → $ITMUX_PROJECT に追加
-# → 環境変数未設定時はエラー
+# → tmux session名からプロジェクト名を自動検出
+# → tmux外で実行時はエラー
 ```
 
-### 環境変数
+### プロジェクト名の自動検出
 
 ```bash
-# ITMUX_PROJECT
-# - open時に自動設定
-# - close時に自動クリア
-# - add/close コマンドでプロジェクト名省略時に使用
-
+# tmux session内では、session名からプロジェクト名を自動検出
 $ itmux open webapp
-# → export ITMUX_PROJECT=webapp
+# → tmux session名が "webapp" になる
 
-$ echo $ITMUX_PROJECT
+# tmux session内で実行
+$ itmux current
 # → webapp
 
-$ itmux add monitoring  # webappに追加
-$ itmux close           # webappを閉じる
+$ itmux add           # webappに追加
+$ itmux close         # webappを閉じる
 ```
 
 ## データ構造

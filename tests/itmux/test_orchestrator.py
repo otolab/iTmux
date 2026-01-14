@@ -25,6 +25,7 @@ class TestHelpers:
         mock_subprocess.assert_called_once_with(
             ["tmux", "has-session", "-t", "test-session"],
             capture_output=True,
+            env=os.environ.copy()
         )
 
     def test_tmux_has_session_not_exists(
@@ -40,6 +41,7 @@ class TestHelpers:
         mock_subprocess.assert_called_once_with(
             ["tmux", "has-session", "-t", "nonexistent"],
             capture_output=True,
+            env=os.environ.copy()
         )
 
     def test_generate_window_name_first(
@@ -97,8 +99,8 @@ class TestList:
         result = orchestrator.list()
 
         assert result == {
-            "project1": {"windows": ["editor", "server"], "count": 2},
-            "project2": {"windows": ["main"], "count": 1},
+            "project1": {"windows": ["editor", "server"], "count": 2, "description": None},
+            "project2": {"windows": ["main"], "count": 1, "description": None},
         }
 
     def test_list_empty_projects(self, mock_config_manager, mock_iterm2_bridge):
@@ -122,7 +124,7 @@ class TestList:
         orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
         result = orchestrator.list()
 
-        assert result == {"empty-project": {"windows": [], "count": 0}}
+        assert result == {"empty-project": {"windows": [], "count": 0, "description": None}}
 
 
 class TestOpen:
@@ -150,9 +152,6 @@ class TestOpen:
             "test-project", windows
         )
 
-        # 環境変数が設定される
-        assert os.environ["ITMUX_PROJECT"] == "test-project"
-
     @pytest.mark.asyncio
     async def test_open_create_missing_windows(
         self, mock_config_manager, mock_iterm2_bridge, mock_subprocess, mock_environ
@@ -171,9 +170,6 @@ class TestOpen:
         mock_iterm2_bridge.open_project_windows.assert_called_once_with(
             "test-project", windows
         )
-
-        # 環境変数が設定される
-        assert os.environ["ITMUX_PROJECT"] == "test-project"
 
     @pytest.mark.asyncio
     async def test_open_with_window_size(
