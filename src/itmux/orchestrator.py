@@ -455,12 +455,12 @@ class ProjectOrchestrator:
         """現在のプロジェクト名を取得.
 
         Returns:
-            str: プロジェクト名
-
-        Raises:
-            ValueError: プロジェクト名が解決できない
+            str: プロジェクト名（tmuxセッション外の場合は空文字列）
         """
-        return self._resolve_project_name(None)
+        try:
+            return self._resolve_project_name(None)
+        except ValueError:
+            return ""
 
     async def add(
         self, project_name: Optional[str] = None, window_name: Optional[str] = None
