@@ -160,13 +160,17 @@ def list():
 
 @main.command()
 def current():
-    """Show current project name (empty string if not in tmux session)."""
+    """Show current project name."""
     async def _current():
         orchestrator = await get_orchestrator()
         return orchestrator.current()
 
-    project_name = asyncio.run(_current())
-    click.echo(project_name)
+    try:
+        project_name = asyncio.run(_current())
+        click.echo(project_name)
+    except ValueError:
+        # tmuxセッション外: 何も出力せずexit code 1を返す
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -257,11 +257,13 @@ class TestCurrent:
         mock_orchestrator.current.assert_called_once()
 
     def test_current_not_in_tmux(self):
-        """tmuxセッション外では空文字列を返す."""
+        """tmuxセッション外ではexit code 1を返す（エラーメッセージなし）."""
         runner = CliRunner()
 
         mock_orchestrator = MagicMock()
-        mock_orchestrator.current.return_value = ""
+        mock_orchestrator.current.side_effect = ValueError(
+            "No project specified and not running in tmux session"
+        )
 
         async def mock_get_orchestrator():
             return mock_orchestrator
@@ -269,5 +271,5 @@ class TestCurrent:
         with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
             result = runner.invoke(main, ["current"])
 
-        assert result.exit_code == 0
-        assert result.output.strip() == ""
+        assert result.exit_code == 1
+        assert result.output == ""  # 何も出力しない
