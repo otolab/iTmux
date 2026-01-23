@@ -39,12 +39,11 @@ class ProjectOrchestrator:
         )
         return result.returncode == 0
 
-    async def _get_windows_from_tmux_session(self, project_name: str) -> list[WindowConfig]:
-        """tmuxセッションのウィンドウ一覧を取得し、対応するiTerm2ウィンドウにタグ付け.
+    async def _sync_windows_from_tmux_session(self, project_name: str) -> list[WindowConfig]:
+        """tmuxセッションのウィンドウ一覧を取得し、タグ付けしてconfig用リストを返す.
 
-        tmux list-windowsを使ってセッションの実ウィンドウを取得し、
-        各tmux_window_idに対応するiTerm2ウィンドウを探してタグ付けします。
-        これにより、user.projectIDが未設定のウィンドウも正しく検出・タグ付けされます。
+        bridge.find_windows_by_tmux_session()を使ってセッションのウィンドウを検出し、
+        各ウィンドウにタグ付けしてWindowConfigのリストを返します。
 
         Args:
             project_name: プロジェクト名（= tmuxセッション名）
@@ -60,45 +59,15 @@ class ProjectOrchestrator:
             print(f"[sync] TmuxConnection not found: {e}", file=sys.stderr)
             return []
 
-        # tmux list-windowsでセッションのウィンドウ一覧を取得
-        result_str = await tmux_conn.async_send_command(
-            "list-windows -F '#{window_index}:#{window_id}'"
-        )
-        lines = result_str.strip().split('\n') if result_str.strip() else []
+        # セッションに属するウィンドウを検出（共通ヘルパー使用）
+        matched_windows = await self.bridge.find_windows_by_tmux_session(tmux_conn)
+        print(f"[sync] matched {len(matched_windows)} iTerm2 windows", file=sys.stderr)
 
-        # tmux_window_idのセット（@を除去）
-        tmux_windows = {}  # {tmux_window_id: window_index}
-        for line in lines:
-            parts = line.split(':')
-            if len(parts) >= 2:
-                window_index = parts[0]
-                tmux_window_id = parts[1].lstrip('@')
-                tmux_windows[tmux_window_id] = window_index
+        # window_index順にソート
+        matched_windows.sort(key=lambda x: int(x[2]))
 
-        print(f"[sync] tmux windows: {tmux_windows}", file=sys.stderr)
-
-        # TmuxConnectionのIDを取得（セッションを特定するため）
-        tmux_connection_id = tmux_conn.connection_id
-
-        # iTerm2の全ウィンドウから、このセッションに属するものを探す
+        # 各ウィンドウにタグ付け（重複を避ける）
         result = []
-        existing_names = set()
-        matched_windows = []  # (window, tmux_window_id, window_index)
-
-        for window in self.bridge.app.windows:
-            for tab in window.tabs:
-                # セッションIDとウィンドウIDの両方で一致を確認
-                if tab.tmux_connection_id != tmux_connection_id:
-                    continue
-                tmux_window_id = str(tab.tmux_window_id) if tab.tmux_window_id else None
-                if tmux_window_id and tmux_window_id in tmux_windows:
-                    matched_windows.append((window, tmux_window_id, tmux_windows[tmux_window_id]))
-                    break  # 1ウィンドウにつき1タブのみチェック
-
-        print(f"[sync] tmux_connection_id={tmux_connection_id}, matched {len(matched_windows)} iTerm2 windows", file=sys.stderr)
-
-        # 各ウィンドウにタグ付け
-        # 既存のwindow_nameと新規生成の両方で重複を避ける
         used_names = set()
         counter = 1
 
@@ -464,7 +433,7 @@ class ProjectOrchestrator:
 
         # 3. tmuxセッションのウィンドウを取得し、iTerm2ウィンドウにタグ付け
         print(f"[sync] Getting windows from tmux session", file=sys.stderr)
-        windows_config = await self._get_windows_from_tmux_session(project_name)
+        windows_config = await self._sync_windows_from_tmux_session(project_name)
         print(f"[sync] Got {len(windows_config)} windows", file=sys.stderr)
 
         # 4. 設定を更新

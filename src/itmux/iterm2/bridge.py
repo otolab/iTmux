@@ -183,98 +183,116 @@ class ITerm2Bridge:
         except Exception as e:
             raise ITerm2Error(f"Failed to add window: {e}") from e
 
-    async def _get_existing_window_ids(self, project_name: str) -> set[str]:
-        """既存のウィンドウIDを取得（user.window_nameベース）.
-
-        Args:
-            project_name: プロジェクト名
-
-        Returns:
-            set[str]: 既存のウィンドウIDのセット
-        """
-        windows = await self.window_manager.find_windows_by_project(project_name)
-        result = set()
-        for window in windows:
-            window_id = await window.async_get_variable("user.window_name")
-            if window_id:
-                result.add(window_id)
-        return result
-
-    async def _tag_first_window(
+    async def find_windows_by_tmux_session(
         self,
-        tmux_conn: iterm2.TmuxConnection,
-        project_name: str,
-        first_window_name: str
-    ) -> Optional[str]:
-        """最初のウィンドウ（window 0）にタグ付け.
+        tmux_conn: iterm2.TmuxConnection
+    ) -> list[tuple[iterm2.Window, str, str]]:
+        """tmuxセッションに属するiTerm2ウィンドウを検出.
+
+        tmux list-windowsとtmux_connection_idを使って、
+        セッションに属するiTerm2ウィンドウを正確に特定します。
+        user.projectIDに依存しないため、デタッチ後の再アタッチでも正しく動作します。
 
         Args:
             tmux_conn: TmuxConnection
-            project_name: プロジェクト名
-            first_window_name: 最初のウィンドウ名
 
         Returns:
-            Optional[str]: タグ付けされたiTerm2ウィンドウID（失敗時はNone）
+            list of (iterm2.Window, tmux_window_id, window_index)
         """
-        # tmux window 0（最初のウィンドウ）を探してタグ付け
-        result = await tmux_conn.async_send_command("list-windows -F '#{window_index}:#{window_id}:#{window_name}'")
-        lines = result.strip().split('\n') if result.strip() else []
+        # tmux list-windowsでセッションのウィンドウ一覧を取得
+        result_str = await tmux_conn.async_send_command(
+            "list-windows -F '#{window_index}:#{window_id}'"
+        )
+        lines = result_str.strip().split('\n') if result_str.strip() else []
 
-        # window 0 を探す
-        first_tmux_window_id = None
+        # tmux_window_id → window_index のマップ（@を除去）
+        tmux_windows = {}
         for line in lines:
             parts = line.split(':')
-            if len(parts) >= 3 and parts[0] == '0':
-                # @記号を削除（iTerm2 APIの tmux_window_id は@なし）
-                first_tmux_window_id = parts[1].lstrip('@')
-                break
+            if len(parts) >= 2:
+                window_index = parts[0]
+                tmux_window_id = parts[1].lstrip('@')
+                tmux_windows[tmux_window_id] = window_index
 
-        if first_tmux_window_id:
-            return await self.window_manager.tag_window_by_tmux_id(
-                first_tmux_window_id, project_name, first_window_name
-            )
-        return None
+        # TmuxConnectionのIDを取得（セッションを特定するため）
+        tmux_connection_id = tmux_conn.connection_id
 
-    async def _create_or_tag_window(
+        # iTerm2の全ウィンドウから、このセッションに属するものを探す
+        matched_windows = []
+        for window in self.app.windows:
+            for tab in window.tabs:
+                # セッションIDとウィンドウIDの両方で一致を確認
+                if tab.tmux_connection_id != tmux_connection_id:
+                    continue
+                tmux_window_id = str(tab.tmux_window_id) if tab.tmux_window_id else None
+                if tmux_window_id and tmux_window_id in tmux_windows:
+                    matched_windows.append((window, tmux_window_id, tmux_windows[tmux_window_id]))
+                    break  # 1ウィンドウにつき1タブのみチェック
+
+        return matched_windows
+
+    async def tag_session_windows(
         self,
         tmux_conn: iterm2.TmuxConnection,
         project_name: str,
-        window_config: WindowConfig,
-        existing_window_ids: set[str]
-    ) -> Optional[str]:
-        """既存ウィンドウを確認、または新規ウィンドウを作成.
+        window_configs: list[WindowConfig]
+    ) -> list[str]:
+        """セッションの既存ウィンドウにタグ付けし、不足分を作成.
 
         Args:
             tmux_conn: TmuxConnection
             project_name: プロジェクト名
-            window_config: ウィンドウ設定
-            existing_window_ids: 既存のウィンドウIDのセット（user.window_nameベース）
+            window_configs: 必要なウィンドウ設定のリスト
 
         Returns:
-            Optional[str]: iTerm2ウィンドウID（既存の場合はNone）
+            list[str]: 新規作成されたiTerm2ウィンドウIDのリスト
         """
-        if window_config.name in existing_window_ids:
-            # 既に開かれているウィンドウ（user.window_nameが設定済み）
-            # 何もしない
-            return None
-        else:
-            # 新しいウィンドウを作成
-            iterm_window = await tmux_conn.async_create_window()
+        # セッションに属するウィンドウを検出
+        matched_windows = await self.find_windows_by_tmux_session(tmux_conn)
 
-            # フロー制御（%pause）によるview-mode遷移を防ぐため、
-            # ウィンドウ作成直後にアクティブ化してPaused状態から復帰させる
-            # 参考: docs/ideas/Tmuxウィンドウがview-modeに入る現象.md 6.2節
-            await asyncio.sleep(0.1)
-            await iterm_window.async_activate()
+        # window_index順にソート
+        matched_windows.sort(key=lambda x: int(x[2]))
 
-            # iTerm2ウィンドウにタグ付け（user.window_nameにIDを設定）
-            await self.window_manager.tag_window(iterm_window, project_name, window_config.name)
+        # config名のセット
+        config_names = {w.name for w in window_configs}
+        tagged_names = set()
+        created_window_ids = []
 
-            # ウィンドウサイズ復元
-            if window_config.window_size:
-                await self.set_window_size(iterm_window.window_id, window_config.window_size)
+        # 既存ウィンドウにタグ付け（config順に対応させる）
+        for i, (window, tmux_window_id, window_index) in enumerate(matched_windows):
+            if i < len(window_configs):
+                window_name = window_configs[i].name
+            else:
+                # configより多いウィンドウがある場合は自動命名
+                counter = 1
+                while True:
+                    candidate = f"window-{counter}"
+                    if candidate not in tagged_names and candidate not in config_names:
+                        break
+                    counter += 1
+                window_name = candidate
 
-            return iterm_window.window_id
+            await self.window_manager.tag_window(window, project_name, window_name)
+            tagged_names.add(window_name)
+
+        # configにあるが既存ウィンドウがないものを作成
+        for window_config in window_configs:
+            if window_config.name not in tagged_names:
+                iterm_window = await tmux_conn.async_create_window()
+
+                # view-mode遷移防止
+                await asyncio.sleep(0.1)
+                await iterm_window.async_activate()
+
+                await self.window_manager.tag_window(iterm_window, project_name, window_config.name)
+                tagged_names.add(window_config.name)
+                created_window_ids.append(iterm_window.window_id)
+
+                # ウィンドウサイズ復元
+                if window_config.window_size:
+                    await self.set_window_size(iterm_window.window_id, window_config.window_size)
+
+        return created_window_ids
 
     async def open_project_windows(
         self,
@@ -291,7 +309,7 @@ class ITerm2Bridge:
             window_configs: ウィンドウ設定のリスト（空の場合は default を作成）
 
         Returns:
-            list[str]: 作成されたiTerm2ウィンドウIDのリスト
+            list[str]: 新規作成されたiTerm2ウィンドウIDのリスト
 
         Raises:
             ITerm2Error: iTerm2 APIエラー
@@ -307,24 +325,8 @@ class ITerm2Bridge:
             # 3. TmuxConnection を取得
             tmux_conn = await self.get_tmux_connection(project_name)
 
-            # 4. 既存のウィンドウIDを取得（user.window_nameベース）
-            existing_window_ids = await self._get_existing_window_ids(project_name)
-
-            # 5. 最初のウィンドウにタグ付け（connect_to_sessionで作成済み）
-            window_ids = []
-            first_window_id = await self._tag_first_window(
-                tmux_conn, project_name, window_configs[0].name
-            )
-            if first_window_id:
-                window_ids.append(first_window_id)
-
-            # 6. 2つ目以降のウィンドウを作成/タグ付け
-            for window_config in window_configs[1:]:
-                window_id = await self._create_or_tag_window(
-                    tmux_conn, project_name, window_config, existing_window_ids
-                )
-                if window_id:
-                    window_ids.append(window_id)
+            # 4. 既存ウィンドウにタグ付けし、不足分を作成
+            window_ids = await self.tag_session_windows(tmux_conn, project_name, window_configs)
 
             return window_ids
 
