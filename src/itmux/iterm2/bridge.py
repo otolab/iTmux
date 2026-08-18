@@ -1,6 +1,7 @@
 """iTerm2 Python API integration layer."""
 
 import asyncio
+import shlex
 from pathlib import Path
 from typing import Optional
 
@@ -71,6 +72,7 @@ class ITerm2Bridge:
         project_name: str,
         first_window_name: str = "default",
         environments: Optional[dict[str, str]] = None,
+        cwd: Optional[Path] = None,
     ) -> None:
         """tmux Control Modeセッションに接続.
 
@@ -78,6 +80,7 @@ class ITerm2Bridge:
             project_name: プロジェクト名
             first_window_name: 最初のウィンドウ名
             environments: 適用するセッション環境変数
+            cwd: 初回ウィンドウの作業ディレクトリ
 
         Raises:
             ITerm2Error: 接続に失敗
@@ -87,7 +90,10 @@ class ITerm2Bridge:
 
             # シェル起動前にセッション環境変数を整える
             prepare_session_environments(
-                project_name, environments or {}, first_window_name
+                project_name,
+                environments or {},
+                first_window_name,
+                cwd=cwd,
             )
 
             # Control Modeで既存セッションにアタッチ
@@ -159,12 +165,41 @@ class ITerm2Bridge:
         except Exception:
             pass
 
-    async def add_window(self, project_name: str, window_name: str) -> str:
+    async def _create_tmux_window(
+        self,
+        tmux_conn: iterm2.TmuxConnection,
+        project_name: str,
+        cwd: Optional[Path] = None,
+    ) -> iterm2.Window:
+        """tmux ウィンドウを作成し、対応する iTerm2 ウィンドウを返す."""
+        if cwd is not None:
+            path = shlex.quote(str(cwd))
+            await tmux_conn.async_send_command(
+                f"new-window -t {project_name} -c {path}"
+            )
+            await asyncio.sleep(0.05)
+            matched_windows = await self.find_windows_by_tmux_session(tmux_conn)
+            if not matched_windows:
+                raise ITerm2Error(
+                    f"Failed to find iTerm2 window after tmux new-window for: {project_name}"
+                )
+            matched_windows.sort(key=lambda x: int(x[2]))
+            return matched_windows[-1][0]
+
+        return await tmux_conn.async_create_window()
+
+    async def add_window(
+        self,
+        project_name: str,
+        window_name: str,
+        cwd: Optional[Path] = None,
+    ) -> str:
         """既存プロジェクトに新しいウィンドウを追加.
 
         Args:
             project_name: プロジェクト名
             window_name: ウィンドウ名
+            cwd: 新規ウィンドウの作業ディレクトリ
 
         Returns:
             str: 作成されたiTerm2ウィンドウID
@@ -177,7 +212,9 @@ class ITerm2Bridge:
             tmux_conn = await self.get_tmux_connection(project_name)
 
             # 新しいウィンドウを作成（openと同じ方法）
-            iterm_window = await tmux_conn.async_create_window()
+            iterm_window = await self._create_tmux_window(
+                tmux_conn, project_name, cwd=cwd
+            )
 
             # フロー制御（%pause）によるview-mode遷移を防ぐため、
             # ウィンドウ作成直後にアクティブ化してPaused状態から復帰させる
@@ -245,7 +282,8 @@ class ITerm2Bridge:
         self,
         tmux_conn: iterm2.TmuxConnection,
         project_name: str,
-        window_configs: list[WindowConfig]
+        window_configs: list[WindowConfig],
+        cwd: Optional[Path] = None,
     ) -> list[str]:
         """セッションの既存ウィンドウにタグ付けし、不足分を作成.
 
@@ -253,6 +291,7 @@ class ITerm2Bridge:
             tmux_conn: TmuxConnection
             project_name: プロジェクト名
             window_configs: 必要なウィンドウ設定のリスト
+            cwd: 新規作成ウィンドウの作業ディレクトリ
 
         Returns:
             list[str]: 新規作成されたiTerm2ウィンドウIDのリスト
@@ -288,7 +327,9 @@ class ITerm2Bridge:
         # configにあるが既存ウィンドウがないものを作成
         for window_config in window_configs:
             if window_config.name not in tagged_names:
-                iterm_window = await tmux_conn.async_create_window()
+                iterm_window = await self._create_tmux_window(
+                    tmux_conn, project_name, cwd=cwd
+                )
 
                 # view-mode遷移防止
                 await asyncio.sleep(0.05)
@@ -309,6 +350,7 @@ class ITerm2Bridge:
         project_name: str,
         window_configs: list[WindowConfig],
         environments: Optional[dict[str, str]] = None,
+        cwd: Optional[Path] = None,
     ) -> list[str]:
         """プロジェクトのtmuxウィンドウを開く.
 
@@ -319,6 +361,7 @@ class ITerm2Bridge:
             project_name: プロジェクト名
             window_configs: ウィンドウ設定のリスト（空の場合は default を作成）
             environments: セッション環境変数（シェル起動前に適用）
+            cwd: 新規ウィンドウの作業ディレクトリ
 
         Returns:
             list[str]: 新規作成されたiTerm2ウィンドウIDのリスト
@@ -333,14 +376,19 @@ class ITerm2Bridge:
 
             # 2. セッションに接続（環境変数は connect 前に適用）
             await self.connect_to_session(
-                project_name, window_configs[0].name, environments=environments
+                project_name,
+                window_configs[0].name,
+                environments=environments,
+                cwd=cwd,
             )
 
             # 3. TmuxConnection を取得
             tmux_conn = await self.get_tmux_connection(project_name)
 
             # 4. 既存ウィンドウにタグ付けし、不足分を作成
-            window_ids = await self.tag_session_windows(tmux_conn, project_name, window_configs)
+            window_ids = await self.tag_session_windows(
+                tmux_conn, project_name, window_configs, cwd=cwd
+            )
 
             return window_ids
 

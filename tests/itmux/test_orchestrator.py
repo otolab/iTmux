@@ -2,6 +2,7 @@
 
 import os
 import pytest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from itmux.orchestrator import ProjectOrchestrator
@@ -149,7 +150,7 @@ class TestOpen:
 
         # open_project_windowsが呼ばれる
         mock_iterm2_bridge.open_project_windows.assert_called_once_with(
-            "test-project", windows, {}
+            "test-project", windows, {}, cwd=None
         )
 
     @pytest.mark.asyncio
@@ -168,7 +169,7 @@ class TestOpen:
 
         # open_project_windowsが呼ばれる
         mock_iterm2_bridge.open_project_windows.assert_called_once_with(
-            "test-project", windows, {}
+            "test-project", windows, {}, cwd=None
         )
 
     @pytest.mark.asyncio
@@ -188,7 +189,7 @@ class TestOpen:
 
         # open_project_windowsが呼ばれる（ウィンドウサイズはWindowConfig内に含まれる）
         mock_iterm2_bridge.open_project_windows.assert_called_once_with(
-            "test-project", windows, {}
+            "test-project", windows, {}, cwd=None
         )
 
     @pytest.mark.asyncio
@@ -236,6 +237,7 @@ class TestOpen:
             "test-project",
             [WindowConfig(name="editor")],
             {"MY_KEY": "my_value"},
+            cwd=None,
         )
 
     @pytest.mark.asyncio
@@ -261,3 +263,120 @@ class TestOpen:
 
         mock_iterm2_bridge.open_project_windows.assert_not_called()
         mock_apply_env.assert_called_once_with("test-project", {"FOO": "bar"})
+
+    @pytest.mark.asyncio
+    @patch("itmux.orchestrator.apply_session_cwd")
+    @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
+    async def test_open_passes_cwd_to_bridge(
+        self, mock_is_tmux_running, mock_apply_cwd,
+        mock_config_manager, mock_iterm2_bridge, mock_environ, tmp_path
+    ):
+        """open 時に cwd を bridge へ渡す."""
+        mock_is_tmux_running.return_value = True
+        cwd = tmp_path.resolve()
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="test-project",
+            cwd=cwd,
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator.open("test-project")
+
+        mock_iterm2_bridge.open_project_windows.assert_called_once_with(
+            "test-project",
+            [WindowConfig(name="editor")],
+            {},
+            cwd=cwd,
+        )
+        mock_apply_cwd.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("itmux.orchestrator.apply_session_cwd")
+    @patch("itmux.orchestrator.apply_session_environments")
+    @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
+    async def test_open_reapplies_cwd_when_all_windows_open(
+        self, mock_is_tmux_running, mock_apply_env, mock_apply_cwd,
+        mock_config_manager, mock_iterm2_bridge, mock_environ, tmp_path
+    ):
+        """全ウィンドウが既に開いていても cwd は再適用."""
+        mock_is_tmux_running.return_value = True
+        cwd = tmp_path.resolve()
+        mock_window = AsyncMock()
+        mock_window.async_get_variable.return_value = "editor"
+        mock_iterm2_bridge.find_windows_by_project.return_value = [mock_window]
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="test-project",
+            cwd=cwd,
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator.open("test-project")
+
+        mock_iterm2_bridge.open_project_windows.assert_not_called()
+        mock_apply_cwd.assert_called_once_with("test-project", cwd)
+
+    @pytest.mark.asyncio
+    @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
+    async def test_open_invalid_cwd_raises(
+        self, mock_is_tmux_running,
+        mock_config_manager, mock_iterm2_bridge, mock_environ
+    ):
+        """存在しない cwd で open は失敗."""
+        from itmux.exceptions import CwdError
+
+        mock_is_tmux_running.return_value = True
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="test-project",
+            cwd=Path("/nonexistent/itmux-cwd-open"),
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+
+        with pytest.raises(CwdError):
+            await orchestrator.open("test-project")
+
+
+class TestAdd:
+    """add() のテスト."""
+
+    @pytest.mark.asyncio
+    @patch("itmux.orchestrator.apply_session_environments")
+    async def test_add_passes_cwd_to_bridge(
+        self, mock_apply_env,
+        mock_config_manager, mock_iterm2_bridge, tmp_path
+    ):
+        """add 時に cwd を bridge へ渡す."""
+        cwd = tmp_path.resolve()
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="test-project",
+            cwd=cwd,
+            tmux_windows=[WindowConfig(name="window-1")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator.add("test-project", "window-2")
+
+        mock_iterm2_bridge.add_window.assert_called_once_with(
+            "test-project", "window-2", cwd=cwd
+        )
+
+    @pytest.mark.asyncio
+    async def test_add_invalid_cwd_raises(
+        self, mock_config_manager, mock_iterm2_bridge
+    ):
+        """存在しない cwd で add は失敗."""
+        from itmux.exceptions import CwdError
+
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="test-project",
+            cwd=Path("/nonexistent/itmux-cwd-add"),
+            tmux_windows=[WindowConfig(name="window-1")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+
+        with pytest.raises(CwdError):
+            await orchestrator.add("test-project", "window-2")

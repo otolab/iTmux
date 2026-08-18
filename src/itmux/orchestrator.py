@@ -10,6 +10,7 @@ from .iterm2 import ITerm2Bridge
 from .models import WindowConfig
 from .exceptions import ProjectNotFoundError
 from .tmux.environment import apply_session_environments
+from .tmux.cwd import apply_session_cwd, validate_cwd_path
 
 
 class ProjectOrchestrator:
@@ -317,6 +318,9 @@ class ProjectOrchestrator:
             self.config.create_project(project_name, windows=[])
             project = self.config.get_project(project_name)
 
+        if project.cwd:
+            validate_cwd_path(project.cwd)
+
         # 2. 既存のiTerm2ウィンドウを検索（既に開いているwindowを特定）
         existing_windows = await self.bridge.find_windows_by_project(project_name)
         existing_window_names = set()
@@ -334,11 +338,17 @@ class ProjectOrchestrator:
         # windows_to_openが空でも、プロジェクトのウィンドウが0個かつcreate_default=Trueなら開く
         if windows_to_open or (not project.tmux_windows and create_default):
             await self.bridge.open_project_windows(
-                project_name, windows_to_open, project.environments
+                project_name,
+                windows_to_open,
+                project.environments,
+                cwd=project.cwd,
             )
-        elif project.environments:
+        elif project.environments or project.cwd:
             # 全ウィンドウが既に開いている場合（resurrect 後の再適用など）
-            apply_session_environments(project_name, project.environments)
+            if project.environments:
+                apply_session_environments(project_name, project.environments)
+            if project.cwd:
+                apply_session_cwd(project_name, project.cwd)
 
         # 4. hookを設定（自動同期を有効化）
         # セッションスコープのhook（after-new-window等）は上書きされるため、
@@ -528,8 +538,10 @@ class ProjectOrchestrator:
 
         # 3. 環境変数を適用してから新規ウィンドウ作成
         project = self.config.get_project(project_name)
+        if project.cwd:
+            validate_cwd_path(project.cwd)
         apply_session_environments(project_name, project.environments)
-        await self.bridge.add_window(project_name, window_name)
+        await self.bridge.add_window(project_name, window_name, cwd=project.cwd)
 
         # 4. 状態を同期（hookも実行されるが、確実性のため明示的に呼ぶ）
         # after-new-window hookが発火するが、タイミングによっては

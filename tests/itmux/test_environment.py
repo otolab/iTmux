@@ -152,6 +152,35 @@ class TestPrepareSessionEnvironments:
             env=os.environ.copy(),
         )
 
+    @patch("itmux.tmux.environment.tmux_has_session")
+    @patch("itmux.tmux.environment.subprocess.run")
+    def test_new_session_with_cwd(
+        self, mock_run, mock_has_session, tmp_path
+    ):
+        """cwd 指定の新規セッションは -c 付きで作成."""
+        mock_has_session.return_value = False
+        cwd = tmp_path.resolve()
+
+        created = prepare_session_environments("my-project", {}, "editor", cwd=cwd)
+
+        assert created is True
+        mock_run.assert_called_once_with(
+            [
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                "my-project",
+                "-n",
+                "editor",
+                "-c",
+                str(cwd),
+            ],
+            capture_output=True,
+            check=False,
+            env=os.environ.copy(),
+        )
+
 
 class TestPrepareSessionEnvironmentsIntegration:
     """prepare_session_environments() の tmux 実機検証."""

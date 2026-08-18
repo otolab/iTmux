@@ -7,6 +7,12 @@ class ConfigError(Exception):
     pass
 
 
+class CwdError(Exception):
+    """作業ディレクトリ（cwd）関連エラー."""
+
+    pass
+
+
 class ProjectNotFoundError(ConfigError):
     """プロジェクトが見つからないエラー."""
 
