@@ -1,7 +1,6 @@
 """tmuxセッションへの作業ディレクトリ（cwd）適用."""
 
 import os
-import shlex
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -49,16 +48,37 @@ def list_session_pane_ids(
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def cd_pane(
+def set_session_working_directory(
+    session_name: str,
+    cwd: Path,
+    env: Optional[dict[str, str]] = None,
+) -> None:
+    """セッションのデフォルト作業ディレクトリを更新（新規ウィンドウ/ペイン用）.
+
+    tmux の attach-session -c を非対話で実行する。set-environment と同様、
+    既存ペインのシェル cwd は変更しない。
+    """
+    run_env = (env or os.environ).copy()
+    run_env.pop("TMUX", None)
+    subprocess.run(
+        ["tmux", "attach-session", "-t", session_name, "-c", str(cwd)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        env=run_env,
+    )
+
+
+def respawn_pane_cwd(
     pane_id: str,
     cwd: Path,
     env: Optional[dict[str, str]] = None,
 ) -> None:
-    """ペインのシェルに cd を送信."""
+    """既存ペインを再起動し、作業ディレクトリを設定."""
     run_env = (env or os.environ).copy()
-    path = shlex.quote(str(cwd))
     subprocess.run(
-        ["tmux", "send-keys", "-t", pane_id, f"cd {path}", "Enter"],
+        ["tmux", "respawn-pane", "-k", "-t", pane_id, "-c", str(cwd)],
         capture_output=True,
         check=False,
         env=run_env,
@@ -70,7 +90,10 @@ def apply_session_cwd(
     cwd: Path,
     env: Optional[dict[str, str]] = None,
 ) -> bool:
-    """既存セッションの全ペインへ cwd を再適用（cd 送信）.
+    """既存セッションへ cwd を再適用.
+
+    1. attach-session -c でセッションのデフォルト作業ディレクトリを更新（新規用）
+    2. 全ペインを respawn-pane -k -c で再起動（既存ペインの cwd を反映）
 
     Args:
         session_name: tmuxセッション名（= プロジェクト名）
@@ -90,7 +113,9 @@ def apply_session_cwd(
     if not tmux_has_session(session_name, env=env):
         return False
 
+    set_session_working_directory(session_name, cwd, env=env)
+
     pane_ids = list_session_pane_ids(session_name, env=env)
     for pane_id in pane_ids:
-        cd_pane(pane_id, cwd, env=env)
+        respawn_pane_cwd(pane_id, cwd, env=env)
     return bool(pane_ids)

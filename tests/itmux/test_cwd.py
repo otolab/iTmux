@@ -1,6 +1,7 @@
 """tests/itmux/test_cwd.py - tmux cwd 適用のテスト."""
 
 import os
+import subprocess
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -8,9 +9,10 @@ from unittest.mock import MagicMock, patch
 from itmux.exceptions import CwdError
 from itmux.tmux.cwd import (
     apply_session_cwd,
-    cd_pane,
     cwd_creation_args,
     list_session_pane_ids,
+    respawn_pane_cwd,
+    set_session_working_directory,
     validate_cwd_path,
 )
 
@@ -71,29 +73,58 @@ class TestListSessionPaneIds:
         assert list_session_pane_ids("missing") == []
 
 
-class TestCdPane:
-    """cd_pane() のテスト."""
+class TestSetSessionWorkingDirectory:
+    """set_session_working_directory() のテスト."""
 
     @patch("itmux.tmux.cwd.subprocess.run")
-    def test_sends_cd_keys(self, mock_run, tmp_path):
+    def test_attach_session_with_cwd(self, mock_run, tmp_path):
         path = tmp_path.resolve()
-        cd_pane("%1", path)
+        set_session_working_directory("my-project", path)
 
         mock_run.assert_called_once()
-        args = mock_run.call_args.args[0]
-        assert args[:4] == ["tmux", "send-keys", "-t", "%1"]
-        assert f"cd {path}" in args[4]
-        assert args[5] == "Enter"
+        args, kwargs = mock_run.call_args
+        assert args[0] == [
+            "tmux",
+            "attach-session",
+            "-t",
+            "my-project",
+            "-c",
+            str(path),
+        ]
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        assert "TMUX" not in kwargs["env"]
+
+
+class TestRespawnPaneCwd:
+    """respawn_pane_cwd() のテスト."""
+
+    @patch("itmux.tmux.cwd.subprocess.run")
+    def test_respawn_pane_with_cwd(self, mock_run, tmp_path):
+        path = tmp_path.resolve()
+        respawn_pane_cwd("%1", path)
+
+        mock_run.assert_called_once_with(
+            ["tmux", "respawn-pane", "-k", "-t", "%1", "-c", str(path)],
+            capture_output=True,
+            check=False,
+            env=os.environ.copy(),
+        )
 
 
 class TestApplySessionCwd:
     """apply_session_cwd() のテスト."""
 
-    @patch("itmux.tmux.cwd.cd_pane")
+    @patch("itmux.tmux.cwd.respawn_pane_cwd")
+    @patch("itmux.tmux.cwd.set_session_working_directory")
     @patch("itmux.tmux.cwd.list_session_pane_ids")
     @patch("itmux.tmux.environment.tmux_has_session")
     def test_applies_to_all_panes(
-        self, mock_has_session, mock_list_panes, mock_cd, tmp_path
+        self,
+        mock_has_session,
+        mock_list_panes,
+        mock_set_session,
+        mock_respawn,
+        tmp_path,
     ):
         mock_has_session.return_value = True
         mock_list_panes.return_value = ["%1", "%2"]
@@ -102,10 +133,11 @@ class TestApplySessionCwd:
         result = apply_session_cwd("my-project", path)
 
         assert result is True
-        assert mock_cd.call_count == 2
-        assert mock_cd.call_args_list[0].args[0] == "%1"
-        assert mock_cd.call_args_list[1].args[0] == "%2"
-        assert mock_cd.call_args_list[0].args[1] == path
+        mock_set_session.assert_called_once_with("my-project", path, env=None)
+        assert mock_respawn.call_count == 2
+        assert mock_respawn.call_args_list[0].args[0] == "%1"
+        assert mock_respawn.call_args_list[1].args[0] == "%2"
+        assert mock_respawn.call_args_list[0].args[1] == path
 
     @patch("itmux.tmux.environment.tmux_has_session")
     def test_invalid_path_raises(self, mock_has_session, tmp_path):
