@@ -137,25 +137,28 @@ class TestCreateTmuxWindow:
         tmux_conn.async_create_window.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_create_with_cwd_uses_new_window_command(
+    async def test_create_with_cwd_uses_api_and_applies_cwd(
         self, mock_iterm2_connection, mock_iterm2_app, tmp_path
     ):
-        """cwd 指定時は tmux new-window -c を使う."""
+        """cwd 指定時も async_create_window を使い、respawn-pane で cwd を適用する."""
         cwd = tmp_path.resolve()
         tmux_conn = AsyncMock()
+        expected_window = AsyncMock()
+        tab = MagicMock()
+        tab.tmux_window_id = "42"
+        expected_window.current_tab = tab
+        tmux_conn.async_create_window = AsyncMock(return_value=expected_window)
         tmux_conn.async_send_command = AsyncMock()
 
-        expected_window = AsyncMock()
         bridge = ITerm2Bridge(mock_iterm2_connection, mock_iterm2_app)
-        bridge.find_windows_by_tmux_session = AsyncMock(
-            return_value=[(expected_window, "1", "0")]
-        )
-
         result = await bridge._create_tmux_window(tmux_conn, "my-project", cwd=cwd)
 
         assert result is expected_window
+        tmux_conn.async_create_window.assert_awaited_once()
         tmux_conn.async_send_command.assert_awaited_once()
         cmd = tmux_conn.async_send_command.await_args.args[0]
-        assert "new-window" in cmd
+        assert "respawn-pane" in cmd
         assert "-c" in cmd
         assert str(cwd) in cmd
+        assert "-k" in cmd
+        assert "@42" in cmd

@@ -1,5 +1,6 @@
 """tmuxセッションへの作業ディレクトリ（cwd）適用."""
 
+import shlex
 from pathlib import Path
 from typing import Optional
 
@@ -26,3 +27,14 @@ def cwd_creation_args(cwd: Optional[Path]) -> list[str]:
     if cwd is None:
         return []
     return ["-c", str(cwd)]
+
+
+def cwd_respawn_pane_command(tmux_window_id: str, cwd: Path) -> str:
+    """iTerm2 ネイティブウィンドウ作成後に pane の cwd を適用する tmux コマンド.
+
+    async_create_window() では起動時 cwd を指定できないため、
+    new-window -c と同等の開始ディレクトリを respawn-pane で設定する。
+    """
+    path = shlex.quote(str(cwd))
+    wid = tmux_window_id.lstrip("@")
+    return f"respawn-pane -t @{wid} -c {path} -k"
