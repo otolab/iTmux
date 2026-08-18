@@ -66,24 +66,34 @@ class ITerm2Bridge:
         cmd = f"tmux resize-window -x {window_size.columns} -y {window_size.lines}\n"
         await session.async_send_text(cmd)
 
-    async def connect_to_session(self, project_name: str, first_window_name: str = "default") -> None:
+    async def connect_to_session(
+        self,
+        project_name: str,
+        first_window_name: str = "default",
+        environments: Optional[dict[str, str]] = None,
+    ) -> None:
         """tmux Control Modeセッションに接続.
 
         Args:
             project_name: プロジェクト名
             first_window_name: 最初のウィンドウ名
+            environments: 適用するセッション環境変数
 
         Raises:
             ITerm2Error: 接続に失敗
         """
         try:
-            # Control Modeでtmuxセッションに接続
-            # -A: セッションが存在しない場合は作成、存在する場合はアタッチ
-            # -s: セッション名
-            # -n: 最初のウィンドウ名
+            from ..tmux.environment import prepare_session_environments
+
+            # シェル起動前にセッション環境変数を整える
+            prepare_session_environments(
+                project_name, environments or {}, first_window_name
+            )
+
+            # Control Modeで既存セッションにアタッチ
             gateway = await iterm2.Window.async_create(
                 self.connection,
-                command=f"/opt/homebrew/bin/tmux -CC new-session -A -s {project_name} -n {first_window_name}"
+                command=f"/opt/homebrew/bin/tmux -CC attach-session -t {project_name}"
             )
 
             if not gateway:
@@ -298,6 +308,7 @@ class ITerm2Bridge:
         self,
         project_name: str,
         window_configs: list[WindowConfig],
+        environments: Optional[dict[str, str]] = None,
     ) -> list[str]:
         """プロジェクトのtmuxウィンドウを開く.
 
@@ -307,6 +318,7 @@ class ITerm2Bridge:
         Args:
             project_name: プロジェクト名
             window_configs: ウィンドウ設定のリスト（空の場合は default を作成）
+            environments: セッション環境変数（シェル起動前に適用）
 
         Returns:
             list[str]: 新規作成されたiTerm2ウィンドウIDのリスト
@@ -319,8 +331,10 @@ class ITerm2Bridge:
             if not window_configs:
                 window_configs = [WindowConfig(name="default")]
 
-            # 2. セッションに接続（最初のウィンドウ名を指定）
-            await self.connect_to_session(project_name, window_configs[0].name)
+            # 2. セッションに接続（環境変数は connect 前に適用）
+            await self.connect_to_session(
+                project_name, window_configs[0].name, environments=environments
+            )
 
             # 3. TmuxConnection を取得
             tmux_conn = await self.get_tmux_connection(project_name)

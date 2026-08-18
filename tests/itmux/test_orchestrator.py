@@ -149,7 +149,7 @@ class TestOpen:
 
         # open_project_windowsが呼ばれる
         mock_iterm2_bridge.open_project_windows.assert_called_once_with(
-            "test-project", windows
+            "test-project", windows, {}
         )
 
     @pytest.mark.asyncio
@@ -168,7 +168,7 @@ class TestOpen:
 
         # open_project_windowsが呼ばれる
         mock_iterm2_bridge.open_project_windows.assert_called_once_with(
-            "test-project", windows
+            "test-project", windows, {}
         )
 
     @pytest.mark.asyncio
@@ -188,7 +188,7 @@ class TestOpen:
 
         # open_project_windowsが呼ばれる（ウィンドウサイズはWindowConfig内に含まれる）
         mock_iterm2_bridge.open_project_windows.assert_called_once_with(
-            "test-project", windows
+            "test-project", windows, {}
         )
 
     @pytest.mark.asyncio
@@ -214,3 +214,50 @@ class TestOpen:
 
         # create_projectが呼ばれたことを確認
         mock_config_manager.create_project.assert_called_once_with("nonexistent", windows=[])
+
+    @pytest.mark.asyncio
+    @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
+    async def test_open_passes_environments_to_bridge(
+        self, mock_is_tmux_running,
+        mock_config_manager, mock_iterm2_bridge, mock_environ
+    ):
+        """open 時に environments を bridge へ渡す（シェル起動前適用）."""
+        mock_is_tmux_running.return_value = True
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="test-project",
+            environments={"MY_KEY": "my_value"},
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator.open("test-project")
+
+        mock_iterm2_bridge.open_project_windows.assert_called_once_with(
+            "test-project",
+            [WindowConfig(name="editor")],
+            {"MY_KEY": "my_value"},
+        )
+
+    @pytest.mark.asyncio
+    @patch("itmux.orchestrator.apply_session_environments")
+    @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
+    async def test_open_skips_env_when_all_windows_already_open(
+        self, mock_is_tmux_running, mock_apply_env,
+        mock_config_manager, mock_iterm2_bridge, mock_environ
+    ):
+        """全ウィンドウが既に開いていても environments は適用."""
+        mock_is_tmux_running.return_value = True
+        mock_window = AsyncMock()
+        mock_window.async_get_variable.return_value = "editor"
+        mock_iterm2_bridge.find_windows_by_project.return_value = [mock_window]
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="test-project",
+            environments={"FOO": "bar"},
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator.open("test-project")
+
+        mock_iterm2_bridge.open_project_windows.assert_not_called()
+        mock_apply_env.assert_called_once_with("test-project", {"FOO": "bar"})

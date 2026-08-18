@@ -1,7 +1,7 @@
 """iTmux data models using Pydantic."""
 
-from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from typing import Optional, Any
+from pydantic import BaseModel, Field, field_validator, model_serializer
 
 
 class WindowSize(BaseModel):
@@ -44,6 +44,9 @@ class ProjectConfig(BaseModel):
 
     name: str = Field(min_length=1, description="プロジェクト名")
     description: Optional[str] = Field(default=None, description="プロジェクトの説明")
+    environments: dict[str, str] = Field(
+        default_factory=dict, description="セッションスコープの環境変数"
+    )
     tmux_windows: list[WindowConfig] = Field(
         default_factory=list, description="tmuxウィンドウリスト"
     )
@@ -58,6 +61,27 @@ class ProjectConfig(BaseModel):
             if char in v:
                 raise ValueError(f'project name cannot contain "{char}"')
         return v
+
+    @field_validator("environments")
+    @classmethod
+    def validate_environments(cls, v: dict[str, str]) -> dict[str, str]:
+        """環境変数名の最小バリデーション."""
+        for key in v:
+            if not key:
+                raise ValueError("environment variable name cannot be empty")
+            if not key.replace("_", "").isalnum():
+                raise ValueError(
+                    f'environment variable name "{key}" contains invalid characters'
+                )
+        return v
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, serializer: Any) -> dict[str, Any]:
+        """空の environments は JSON 出力から除外（後方互換）."""
+        data = serializer(self)
+        if not data.get("environments"):
+            data.pop("environments", None)
+        return data
 
     @field_validator("tmux_windows")
     @classmethod

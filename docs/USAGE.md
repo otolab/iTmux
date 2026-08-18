@@ -261,7 +261,7 @@ itmux open my-project
 
 ```bash
 itmux close my-project
-# または、環境変数を使って省略形
+# または、tmux セッション内ではプロジェクト名を省略
 itmux close
 ```
 
@@ -271,7 +271,6 @@ itmux close
 3. 各ウィンドウをデタッチ
 4. iTerm2のウィンドウは閉じる
 5. tmuxセッションはバックグラウンドで継続
-6. 環境変数 `ITMUX_PROJECT` をクリア
 
 **重要**: プロセスは停止しません
 - nvimで編集中のファイルはそのまま
@@ -313,9 +312,9 @@ itmux add my-project my_monitoring
 itmux add my-project
 # → 自動的に my-project-1, my-project-2 などが割り当てられる
 
-# パターン3: 環境変数を使って省略
+# パターン3: tmux セッション内で実行（プロジェクト名を自動検出）
 itmux add
-# → $ITMUX_PROJECT に新しいセッションを追加
+# → 現在の tmux session 名（= プロジェクト名）に新しいセッションを追加
 ```
 
 **動作**:
@@ -328,11 +327,10 @@ itmux add
 ```bash
 # プロジェクトを開いた状態で
 itmux open webapp
-# → 環境変数 ITMUX_PROJECT=webapp が設定される
 
-# 作業中に新しいウィンドウが必要になった
+# 作業中に新しいウィンドウが必要になった（tmux session 内で実行）
 itmux add monitoring
-# → webappプロジェクトに monitoring セッションを追加
+# → webapp プロジェクトに monitoring セッションを追加
 
 # プロジェクトを閉じる
 itmux close
@@ -454,6 +452,38 @@ Projects:
 
 省略した場合、デフォルトサイズで開きます。
 
+### プロジェクト環境変数（environments）
+
+プロジェクトごとにシェル環境変数を定義できます。`itmux open` 時に tmux セッションスコープへ適用され、新規ペインのシェルで利用できます。
+
+```json
+{
+  "projects": {
+    "my-project": {
+      "name": "my-project",
+      "environments": {
+        "NODE_ENV": "development",
+        "FOO": "bar"
+      },
+      "tmux_windows": [
+        {"name": "editor"}
+      ]
+    }
+  }
+}
+```
+
+```bash
+itmux open my-project
+# 新規ウィンドウのシェルで確認
+echo $NODE_ENV  # → development
+```
+
+**注意**:
+- `environments` 未指定時は従来どおり（後方互換）
+- tmux-resurrect 復元後は `itmux open` で config の値が再適用される
+- 復元直後から存在していたシェルは tmux の仕様上、再起動するまで値が変わらない場合がある
+
 ### 複数プロジェクト
 
 ```json
@@ -509,7 +539,6 @@ Projects:
 ```bash
 # 朝、仕事開始
 itmux open webapp
-# → 環境変数 ITMUX_PROJECT=webapp が設定される
 
 # [webapp_editor ウィンドウ]
 cd ~/work/webapp
@@ -539,7 +568,6 @@ itmux close
 # → 全てのウィンドウが閉じる（monitoring含む）
 # → サーバーは動き続ける
 # → config.jsonに現在の状態が自動保存される
-# → 環境変数 ITMUX_PROJECT がクリアされる
 
 # 翌朝、再開
 itmux open webapp
@@ -553,13 +581,11 @@ itmux open webapp
 ```bash
 # プロジェクトAで作業
 itmux open project-a
-# → ITMUX_PROJECT=project-a
 # ... 作業 ...
 
 # プロジェクトBに切り替え
 itmux close          # project-aを自動保存して閉じる
 itmux open project-b
-# → ITMUX_PROJECT=project-b
 # ... 作業 ...
 
 # プロジェクトAに戻る
