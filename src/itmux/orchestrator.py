@@ -7,7 +7,7 @@ from typing import Optional
 
 from .config import ConfigManager
 from .iterm2 import ITerm2Bridge
-from .models import WindowConfig
+from .models import WindowConfig, ProjectConfig
 from .exceptions import ProjectNotFoundError
 from .tmux.environment import apply_session_environments
 from .tmux.cwd import validate_cwd_path
@@ -40,6 +40,49 @@ class ProjectOrchestrator:
             env=os.environ.copy()
         )
         return result.returncode == 0
+
+    _SYNC_EPHEMERAL_PROJECT_FIELDS = frozenset({"name", "tmux_windows"})
+
+    def _has_user_defined_project_metadata(self, project: ProjectConfig) -> bool:
+        """名前と tmux 由来情報以外のユーザー設定があるか判定する."""
+        for field_name in ProjectConfig.model_fields:
+            if field_name in self._SYNC_EPHEMERAL_PROJECT_FIELDS:
+                continue
+            value = getattr(project, field_name)
+            if value is None:
+                continue
+            if field_name == "environments" and not value:
+                continue
+            if field_name == "description" and not value:
+                continue
+            return True
+        return False
+
+    def _should_delete_project_on_sync(self, project: ProjectConfig) -> bool:
+        """tmux セッション不在時にプロジェクトを削除すべきか判定する."""
+        return not self._has_user_defined_project_metadata(project)
+
+    def _handle_session_absent_on_sync(self, project_name: str) -> None:
+        """tmux セッション不在時の sync 処理（削除または tmux_windows クリア）."""
+        import sys
+
+        try:
+            project = self.config.get_project(project_name)
+        except ProjectNotFoundError:
+            return
+
+        if self._should_delete_project_on_sync(project):
+            print(
+                f"[sync] Session not found, deleting project: {project_name}",
+                file=sys.stderr,
+            )
+            self.config.delete_project(project_name)
+        else:
+            print(
+                f"[sync] Session not found, preserving user metadata: {project_name}",
+                file=sys.stderr,
+            )
+            self.config.update_project(project_name, [])
 
     async def _sync_windows_from_tmux_session(self, project_name: str) -> list[WindowConfig]:
         """tmuxセッションのウィンドウ一覧を取得し、タグ付けしてconfig用リストを返す.
@@ -402,24 +445,25 @@ class ProjectOrchestrator:
     async def _sync_all_projects(self) -> None:
         """全プロジェクトの整合性をチェック（session-closed hookから呼ばれる）.
 
-        セッションが存在しないプロジェクトをconfig.jsonから削除します。
+        セッションが存在しないプロジェクトは、ユーザー設定が残っていれば
+        tmux_windows をクリアして保持し、ウィンドウ定義のみの場合は削除する。
         """
         import sys
         print(f"[sync] Checking all projects", file=sys.stderr)
 
         for proj_name in self.config.list_projects():
             if not self._tmux_has_session(proj_name):
-                print(f"[sync] Deleting project without session: {proj_name}", file=sys.stderr)
                 try:
-                    self.config.delete_project(proj_name)
+                    self._handle_session_absent_on_sync(proj_name)
                 except Exception:
                     pass
 
     async def _sync_single_project(self, project_name: Optional[str] = None) -> None:
         """単一プロジェクトの状態を同期（tmuxセッション → config.json）.
 
-        tmuxセッションが存在しない場合、プロジェクトをconfig.jsonから削除します。
-        セッションが存在する場合、ウィンドウリストをconfig.jsonに反映します。
+        tmux セッションが存在しない場合、ユーザー設定が残っていれば
+        tmux_windows をクリアして保持し、ウィンドウ定義のみの場合は削除する。
+        セッションが存在する場合、ウィンドウリストを config.json に反映する。
 
         Args:
             project_name: プロジェクト名（省略時は環境変数から取得）
@@ -435,10 +479,8 @@ class ProjectOrchestrator:
 
         # 2. tmuxセッションが存在するかチェック
         if not self._tmux_has_session(project_name):
-            # セッション終了 → プロジェクトを削除
-            print(f"[sync] Session not found, deleting project", file=sys.stderr)
             try:
-                self.config.delete_project(project_name)
+                self._handle_session_absent_on_sync(project_name)
             except Exception:
                 # プロジェクトが既に存在しない場合は無視
                 pass
