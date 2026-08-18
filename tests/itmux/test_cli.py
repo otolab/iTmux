@@ -6,7 +6,13 @@ from click.testing import CliRunner
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from itmux.cli import main
-from itmux.exceptions import ProjectNotFoundError, ITerm2Error, ConfigError
+from itmux.exceptions import (
+    ProjectNotFoundError,
+    ProjectNotOpenError,
+    ProjectNotOpenReason,
+    ITerm2Error,
+    ConfigError,
+)
 
 
 class TestList:
@@ -235,6 +241,68 @@ class TestAdd:
         assert result.exit_code == 0
         assert "✓ Added window to project: current" in result.output
         mock_orchestrator.add.assert_called_once_with(None, None)
+
+    def test_add_project_not_open_in_iterm2(self):
+        """iTerm2 で未オープンのプロジェクトへの追加."""
+        runner = CliRunner()
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.add.side_effect = ProjectNotOpenError(
+            "iTmux", ProjectNotOpenReason.NOT_OPEN
+        )
+
+        async def mock_get_orchestrator():
+            return mock_orchestrator
+
+        with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
+            result = runner.invoke(main, ["add", "iTmux"])
+
+        assert result.exit_code == 1
+        assert "✗ Error:" in result.output
+        assert "iTerm2 で開いていません" in result.output
+        assert "itmux open iTmux" in result.output
+        assert "iTerm2 Error" not in result.output
+        assert "TmuxConnection" not in result.output
+
+    def test_add_tmux_detached(self):
+        """tmux セッションのみ存在する場合."""
+        runner = CliRunner()
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.add.side_effect = ProjectNotOpenError(
+            "iTmux", ProjectNotOpenReason.TMUX_DETACHED
+        )
+
+        async def mock_get_orchestrator():
+            return mock_orchestrator
+
+        with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
+            result = runner.invoke(main, ["add", "iTmux"])
+
+        assert result.exit_code == 1
+        assert "tmux 上に存在しますが" in result.output
+        assert "itmux open iTmux" in result.output
+        assert "iTerm2 Error" not in result.output
+
+    def test_add_project_not_found(self):
+        """config にも tmux にも存在しない場合."""
+        runner = CliRunner()
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.add.side_effect = ProjectNotOpenError(
+            "iTmux", ProjectNotOpenReason.NOT_FOUND
+        )
+
+        async def mock_get_orchestrator():
+            return mock_orchestrator
+
+        with patch("itmux.cli.get_orchestrator", side_effect=mock_get_orchestrator):
+            result = runner.invoke(main, ["add", "iTmux"])
+
+        assert result.exit_code == 1
+        assert "設定に存在しません" in result.output
+        assert "itmux open iTmux" in result.output
+        assert "iTerm2 Error" not in result.output
 
 
 class TestCurrent:

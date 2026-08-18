@@ -10,7 +10,13 @@ from pathlib import Path
 from .config import ConfigManager, DEFAULT_CONFIG_PATH
 from .orchestrator import ProjectOrchestrator
 from .iterm2 import ITerm2Bridge
-from .exceptions import ProjectNotFoundError, ITerm2Error, ConfigError, CwdError
+from .exceptions import (
+    ProjectNotFoundError,
+    ProjectNotOpenError,
+    ITerm2Error,
+    ConfigError,
+    CwdError,
+)
 
 
 async def get_orchestrator() -> ProjectOrchestrator:
@@ -95,6 +101,9 @@ def run_async_command(coro, success_message: str, handle_value_error: bool = Fal
             sys.exit(1)
         raise
     except ProjectNotFoundError as e:
+        click.echo(f"✗ Error: {e}", err=True)
+        sys.exit(1)
+    except ProjectNotOpenError as e:
         click.echo(f"✗ Error: {e}", err=True)
         sys.exit(1)
     except ITerm2Error as e:
