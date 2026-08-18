@@ -375,3 +375,155 @@ class TestAdd:
 
         with pytest.raises(CwdError):
             await orchestrator.add("test-project", "window-2")
+
+
+class TestSyncDataProtection:
+    """sync 時のユーザー設定保護."""
+
+    def _orchestrator(self, mock_config_manager, mock_iterm2_bridge):
+        return ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+
+    def _no_session(self, mock_subprocess):
+        mock_subprocess.return_value = MagicMock(returncode=1)
+
+    def test_should_delete_window_only_project(
+        self, mock_config_manager, mock_iterm2_bridge
+    ):
+        """ウィンドウ定義のみのプロジェクトは削除対象."""
+        project = ProjectConfig(
+            name="proj",
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        assert orchestrator._should_delete_project_on_sync(project) is True
+
+    def test_should_not_delete_with_cwd(
+        self, mock_config_manager, mock_iterm2_bridge
+    ):
+        """cwd があるプロジェクトは削除しない."""
+        project = ProjectConfig(
+            name="proj",
+            cwd=Path("/tmp"),
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        assert orchestrator._should_delete_project_on_sync(project) is False
+
+    def test_should_not_delete_with_environments(
+        self, mock_config_manager, mock_iterm2_bridge
+    ):
+        """非空 environments があるプロジェクトは削除しない."""
+        project = ProjectConfig(
+            name="proj",
+            environments={"FOO": "bar"},
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        assert orchestrator._should_delete_project_on_sync(project) is False
+
+    def test_should_not_delete_with_description(
+        self, mock_config_manager, mock_iterm2_bridge
+    ):
+        """description があるプロジェクトは削除しない."""
+        project = ProjectConfig(
+            name="proj",
+            description="my project",
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        assert orchestrator._should_delete_project_on_sync(project) is False
+
+    @pytest.mark.asyncio
+    async def test_sync_single_preserves_cwd_clears_windows(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """セッション不在 + cwd → 削除せず tmux_windows をクリア."""
+        self._no_session(mock_subprocess)
+        project = ProjectConfig(
+            name="proj",
+            cwd=Path("/tmp"),
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        mock_config_manager.get_project.return_value = project
+
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator._sync_single_project("proj")
+
+        mock_config_manager.delete_project.assert_not_called()
+        mock_config_manager.update_project.assert_called_once_with("proj", [])
+
+    @pytest.mark.asyncio
+    async def test_sync_single_preserves_environments(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """セッション不在 + 非空 environments → 削除しない."""
+        self._no_session(mock_subprocess)
+        project = ProjectConfig(
+            name="proj",
+            environments={"FOO": "bar"},
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        mock_config_manager.get_project.return_value = project
+
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator._sync_single_project("proj")
+
+        mock_config_manager.delete_project.assert_not_called()
+        mock_config_manager.update_project.assert_called_once_with("proj", [])
+
+    @pytest.mark.asyncio
+    async def test_sync_single_deletes_window_only_project(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """セッション不在 + ウィンドウ定義のみ → 削除."""
+        self._no_session(mock_subprocess)
+        project = ProjectConfig(
+            name="proj",
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        mock_config_manager.get_project.return_value = project
+
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator._sync_single_project("proj")
+
+        mock_config_manager.delete_project.assert_called_once_with("proj")
+        mock_config_manager.update_project.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sync_all_preserves_cwd(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """sync --all: セッション不在 + cwd → 削除しない."""
+        self._no_session(mock_subprocess)
+        project = ProjectConfig(
+            name="proj",
+            cwd=Path("/tmp"),
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        mock_config_manager.list_projects.return_value = ["proj"]
+        mock_config_manager.get_project.return_value = project
+
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator._sync_all_projects()
+
+        mock_config_manager.delete_project.assert_not_called()
+        mock_config_manager.update_project.assert_called_once_with("proj", [])
+
+    @pytest.mark.asyncio
+    async def test_sync_all_deletes_window_only_project(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """sync --all: セッション不在 + ウィンドウ定義のみ → 削除."""
+        self._no_session(mock_subprocess)
+        project = ProjectConfig(
+            name="proj",
+            tmux_windows=[WindowConfig(name="editor")],
+        )
+        mock_config_manager.list_projects.return_value = ["proj"]
+        mock_config_manager.get_project.return_value = project
+
+        orchestrator = self._orchestrator(mock_config_manager, mock_iterm2_bridge)
+        await orchestrator._sync_all_projects()
+
+        mock_config_manager.delete_project.assert_called_once_with("proj")
+        mock_config_manager.update_project.assert_not_called()
