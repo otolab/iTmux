@@ -528,6 +528,12 @@ tmux-resurrect はペインの作業ディレクトリも保存・復元しま�
 | `itmux open` 実行後 | config の `cwd` で再適用（新規ウィンドウは `-c`、既存ペインは `cd` 送信） |
 | `itmux add` | 新規ウィンドウのみ config の `cwd` で起動 |
 
+**既存ペインのシェル**は、全ウィンドウ既存の `open` 時に `tmux send-keys` で `cd` を再送信します。この方式には次の制約があります。
+
+- ペインがシェルのプロンプト待ちでない場合（vim 等の対話アプリ実行中など）、`cd` がシェルコマンドではなく入力として送られる可能性がある
+- `send-keys` の失敗や `cd` の失敗（存在しないディレクトリへの移動など）は検知・報告しない（`open` は runtime エラーにならない）
+- cwd を確実に反映したい場合は、ペインを再起動するか、手動で `cd` する
+
 推奨フロー: システム再起動 → tmux-resurrect で復元 → `itmux open <project>` で iTerm2 ウィンドウを開く（environments と同様）。
 
 ## iTerm2 Python API統合
