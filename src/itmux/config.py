@@ -74,7 +74,7 @@ class ConfigManager:
         with FileLock(self.lock_path, timeout=10):
             try:
                 with open(self.config_path, "w", encoding="utf-8") as f:
-                    data = config.model_dump(exclude_none=True)
+                    data = config.model_dump(mode="json", exclude_none=True)
                     json.dump(data, f, indent=2, ensure_ascii=False)
                     f.write("\n")  # 末尾改行
             except Exception as e:
@@ -166,6 +166,50 @@ class ConfigManager:
         project.tmux_windows.append(window)
 
         # 自動保存
+        self.save()
+
+    def set_project_cwd(self, project_name: str, cwd: str | Path) -> None:
+        """プロジェクトの作業ディレクトリを設定.
+
+        Args:
+            project_name: プロジェクト名
+            cwd: 作業ディレクトリパス
+
+        Raises:
+            ProjectNotFoundError: プロジェクトが存在しない
+            ConfigError: パスが存在しない、またはディレクトリでない
+        """
+        if self._config is None:
+            self.load()
+
+        if project_name not in self._config.projects:
+            raise ProjectNotFoundError(f"Project '{project_name}' not found")
+
+        path = Path(cwd).expanduser().resolve(strict=False)
+        if not path.exists():
+            raise ConfigError(f"Directory does not exist: {path}")
+        if not path.is_dir():
+            raise ConfigError(f"Not a directory: {path}")
+
+        self._config.projects[project_name].cwd = path
+        self.save()
+
+    def unset_project_cwd(self, project_name: str) -> None:
+        """プロジェクトの作業ディレクトリを削除.
+
+        Args:
+            project_name: プロジェクト名
+
+        Raises:
+            ProjectNotFoundError: プロジェクトが存在しない
+        """
+        if self._config is None:
+            self.load()
+
+        if project_name not in self._config.projects:
+            raise ProjectNotFoundError(f"Project '{project_name}' not found")
+
+        self._config.projects[project_name].cwd = None
         self.save()
 
     def create_project(
