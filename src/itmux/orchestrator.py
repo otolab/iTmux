@@ -9,6 +9,7 @@ from .config import ConfigManager
 from .iterm2 import ITerm2Bridge
 from .models import WindowConfig
 from .exceptions import ProjectNotFoundError
+from .tmux.environment import apply_session_environments
 
 
 class ProjectOrchestrator:
@@ -334,7 +335,10 @@ class ProjectOrchestrator:
         if windows_to_open or (not project.tmux_windows and create_default):
             await self.bridge.open_project_windows(project_name, windows_to_open)
 
-        # 4. hookを設定（自動同期を有効化）
+        # 4. プロジェクト環境変数をtmuxセッションに適用
+        apply_session_environments(project_name, project.environments)
+
+        # 5. hookを設定（自動同期を有効化）
         # セッションスコープのhook（after-new-window等）は上書きされるため、
         # グローバルのsession-closedも上書きされるため、何回openしても多重登録されない
         itmux_command = os.environ.get("ITMUX_COMMAND", "itmux")
@@ -523,7 +527,11 @@ class ProjectOrchestrator:
         # 3. 新規ウィンドウ作成
         await self.bridge.add_window(project_name, window_name)
 
-        # 4. 状態を同期（hookも実行されるが、確実性のため明示的に呼ぶ）
+        # 4. 環境変数を再適用（新規ペインがセッション env を継承する）
+        project = self.config.get_project(project_name)
+        apply_session_environments(project_name, project.environments)
+
+        # 5. 状態を同期（hookも実行されるが、確実性のため明示的に呼ぶ）
         # after-new-window hookが発火するが、タイミングによっては
         # user.window_name設定前にsyncが実行される可能性があるため、
         # tag_window()完了後に明示的にsyncを実行する

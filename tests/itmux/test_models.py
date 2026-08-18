@@ -148,6 +148,38 @@ class TestProjectConfig:
         project = ProjectConfig(name="my-project")
         assert project.description is None
 
+    def test_project_with_environments(self):
+        """環境変数付きプロジェクト."""
+        project = ProjectConfig(
+            name="my-project",
+            environments={"NODE_ENV": "development", "FOO": "bar"},
+        )
+        assert project.environments == {"NODE_ENV": "development", "FOO": "bar"}
+
+    def test_project_without_environments_defaults_empty(self):
+        """environments 未指定は空 dict."""
+        project = ProjectConfig(name="my-project")
+        assert project.environments == {}
+
+    def test_invalid_environment_name_raises_error(self):
+        """不正な環境変数名はエラー."""
+        with pytest.raises(ValidationError):
+            ProjectConfig(name="my-project", environments={"INVALID-KEY": "value"})
+
+    def test_empty_environment_name_raises_error(self):
+        """空の環境変数名はエラー."""
+        with pytest.raises(ValidationError):
+            ProjectConfig(name="my-project", environments={"": "value"})
+
+    def test_backward_compatible_json_without_environments(self):
+        """environments なしの既存 config が読み込める."""
+        data = {
+            "name": "legacy-project",
+            "tmux_windows": [{"name": "main"}],
+        }
+        project = ProjectConfig.model_validate(data)
+        assert project.environments == {}
+
     def test_json_serialization(self):
         """JSON変換."""
         project = ProjectConfig(

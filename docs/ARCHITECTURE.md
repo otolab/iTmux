@@ -133,11 +133,19 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
    - グローバルのsession-closed: 上書き
    - 何回openしても多重登録されない（冪等性）
 
-7. 完了
+7. プロジェクト環境変数を適用
+   tmux set-environment -t <project> KEY VALUE
+
+   - config.json の environments をセッションスコープで設定
+   - 新規ペイン・新規ウィンドウのシェルに継承される
+   - 既存 attach / resurrect 復元後も毎回 open で再適用
+
+8. 完了
    → iTerm2に必要なウィンドウだけが開く
    → 既に開いているウィンドウはそのまま
    → 各ウィンドウに user.projectID, user.window_name タグ
    → tmux hookによる自動同期が有効化
+   → config の environments が tmux セッションに適用される
    → tmux session内では session名からプロジェクト名を自動検出
 ```
 
@@ -384,7 +392,11 @@ $ itmux close         # webappを閉じる
             "lines": 40
           }
         }
-      ]
+      ],
+      "environments": {
+        "NODE_ENV": "development",
+        "MY_VAR": "value"
+      }
     }
   }
 }
@@ -407,7 +419,57 @@ class SessionConfig:
 class ProjectConfig:
     name: str
     sessions: list[SessionConfig]
+    environments: dict[str, str]  # 省略時は {}
 ```
+
+## プロジェクト環境変数
+
+### 概要
+
+プロジェクトごとに `environments` を `config.json` で定義し、`itmux open` 時に tmux セッションスコープへ適用します。
+
+```json
+{
+  "projects": {
+    "my-project": {
+      "name": "my-project",
+      "environments": {
+        "NODE_ENV": "development",
+        "FOO": "bar"
+      },
+      "tmux_windows": [...]
+    }
+  }
+}
+```
+
+### 適用方式
+
+- **方式**: `tmux set-environment -t <session> KEY VALUE`（セッションスコープ）
+- **タイミング**: `itmux open` のたびに適用（新規作成・既存 attach 双方）。`itmux add` 時も再適用
+- **未指定時**: `environments` 省略または空 dict → 何も変更しない（後方互換）
+- **新規ペイン**: セッション環境変数を継承するため、`echo $KEY` で即確認可能
+
+### tmux-resurrect との整合
+
+tmux-resurrect はセッション環境変数も保存・復元します。競合時の正本は **config.json の `environments`** です。
+
+| タイミング | 動作 |
+|-----------|------|
+| resurrect 復元直後 | 保存時点の環境変数が復元される |
+| `itmux open` 実行後 | config の `environments` で上書き |
+| 新規ウィンドウ / ペイン | 上書き後の値が継承される |
+
+**既存ペインのシェル**は tmux の仕様上、`set-environment` だけでは更新されません。復元直後に開いていたシェルで値を反映したい場合は、シェルを再起動するか、シェル設定で以下を利用してください。
+
+```bash
+# ~/.zshrc 等（tmux 内でのみ実行）
+if [ -n "$TMUX" ]; then
+  eval "$(tmux show-environment -s)"
+fi
+```
+
+推奨フロー: システム再起動 → tmux-resurrect で復元 → `itmux open <project>` で iTerm2 ウィンドウを開く。
 
 ## iTerm2 Python API統合
 
