@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from itmux.orchestrator import ProjectOrchestrator
 from itmux.models import WindowConfig, ProjectConfig, WindowSize
-from itmux.exceptions import ProjectNotFoundError
+from itmux.exceptions import (
+    ProjectNotFoundError,
+    ProjectNotOpenError,
+    ProjectNotOpenReason,
+    ITerm2Error,
+)
 
 
 class TestHelpers:
@@ -375,3 +380,74 @@ class TestAdd:
 
         with pytest.raises(CwdError):
             await orchestrator.add("test-project", "window-2")
+
+    @pytest.mark.asyncio
+    async def test_add_raises_when_config_exists_but_not_open(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """config に存在するが iTerm2 で未オープンの場合."""
+        mock_iterm2_bridge.get_tmux_connection.side_effect = ITerm2Error(
+            "TmuxConnection not found for project: iTmux"
+        )
+        mock_subprocess.return_value = MagicMock(returncode=1)
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="iTmux",
+            tmux_windows=[WindowConfig(name="window-1")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+
+        with pytest.raises(ProjectNotOpenError) as exc_info:
+            await orchestrator.add("iTmux")
+
+        assert exc_info.value.reason is ProjectNotOpenReason.NOT_OPEN
+        assert "iTerm2 で開いていません" in str(exc_info.value)
+        assert "itmux open iTmux" in str(exc_info.value)
+        mock_iterm2_bridge.add_window.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_add_raises_when_tmux_session_exists_but_detached(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """tmux セッションはあるが iTerm2 で未オープンの場合."""
+        mock_iterm2_bridge.get_tmux_connection.side_effect = ITerm2Error(
+            "TmuxConnection not found for project: iTmux"
+        )
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        mock_config_manager.get_project.return_value = ProjectConfig(
+            name="iTmux",
+            tmux_windows=[WindowConfig(name="window-1")],
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+
+        with pytest.raises(ProjectNotOpenError) as exc_info:
+            await orchestrator.add("iTmux")
+
+        assert exc_info.value.reason is ProjectNotOpenReason.TMUX_DETACHED
+        assert "tmux 上に存在しますが" in str(exc_info.value)
+        assert "itmux open iTmux" in str(exc_info.value)
+        mock_iterm2_bridge.add_window.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_add_raises_when_not_in_config_or_tmux(
+        self, mock_config_manager, mock_iterm2_bridge, mock_subprocess
+    ):
+        """config にも tmux にも存在しない場合."""
+        mock_iterm2_bridge.get_tmux_connection.side_effect = ITerm2Error(
+            "TmuxConnection not found for project: iTmux"
+        )
+        mock_subprocess.return_value = MagicMock(returncode=1)
+        mock_config_manager.get_project.side_effect = ProjectNotFoundError(
+            "Project 'iTmux' not found"
+        )
+
+        orchestrator = ProjectOrchestrator(mock_config_manager, mock_iterm2_bridge)
+
+        with pytest.raises(ProjectNotOpenError) as exc_info:
+            await orchestrator.add("iTmux")
+
+        assert exc_info.value.reason is ProjectNotOpenReason.NOT_FOUND
+        assert "設定に存在しません" in str(exc_info.value)
+        assert "itmux open iTmux" in str(exc_info.value)
+        mock_iterm2_bridge.add_window.assert_not_called()

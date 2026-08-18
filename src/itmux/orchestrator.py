@@ -8,7 +8,12 @@ from typing import Optional
 from .config import ConfigManager
 from .iterm2 import ITerm2Bridge
 from .models import WindowConfig
-from .exceptions import ProjectNotFoundError
+from .exceptions import (
+    ITerm2Error,
+    ProjectNotFoundError,
+    ProjectNotOpenError,
+    ProjectNotOpenReason,
+)
 from .tmux.environment import apply_session_environments
 from .tmux.cwd import validate_cwd_path
 
@@ -129,6 +134,38 @@ class ProjectOrchestrator:
             raise ValueError("No project specified and not running in tmux session")
 
         return project_name
+
+    async def _ensure_project_open_for_add(self, project_name: str) -> None:
+        """add 前にプロジェクトが iTerm2 で開いていることを確認.
+
+        Args:
+            project_name: プロジェクト名
+
+        Raises:
+            ProjectNotOpenError: プロジェクトが iTerm2 で開いていない
+        """
+        try:
+            await self.bridge.get_tmux_connection(project_name)
+            return
+        except ITerm2Error:
+            pass
+
+        has_tmux = self._tmux_has_session(project_name)
+
+        try:
+            self.config.get_project(project_name)
+            has_config = True
+        except ProjectNotFoundError:
+            has_config = False
+
+        if has_tmux:
+            reason = ProjectNotOpenReason.TMUX_DETACHED
+        elif has_config:
+            reason = ProjectNotOpenReason.NOT_OPEN
+        else:
+            reason = ProjectNotOpenReason.NOT_FOUND
+
+        raise ProjectNotOpenError(project_name, reason)
 
     def _generate_window_name(self, project_name: str) -> str:
         """ウィンドウ名を自動生成.
@@ -525,22 +562,26 @@ class ProjectOrchestrator:
 
         Raises:
             ProjectNotFoundError: プロジェクトが存在しない
+            ProjectNotOpenError: プロジェクトが iTerm2 で開いていない
         """
         # 1. プロジェクト名決定
         project_name = self._resolve_project_name(project_name)
 
-        # 2. ウィンドウ名決定
+        # 2. iTerm2 で開いていることを確認
+        await self._ensure_project_open_for_add(project_name)
+
+        # 3. ウィンドウ名決定
         if window_name is None:
             window_name = self._generate_window_name(project_name)
 
-        # 3. 環境変数を適用してから新規ウィンドウ作成
+        # 4. 環境変数を適用してから新規ウィンドウ作成
         project = self.config.get_project(project_name)
         if project.cwd:
             validate_cwd_path(project.cwd)
         apply_session_environments(project_name, project.environments)
         await self.bridge.add_window(project_name, window_name, cwd=project.cwd)
 
-        # 4. 状態を同期（hookも実行されるが、確実性のため明示的に呼ぶ）
+        # 5. 状態を同期（hookも実行されるが、確実性のため明示的に呼ぶ）
         # after-new-window hookが発火するが、タイミングによっては
         # user.window_name設定前にsyncが実行される可能性があるため、
         # tag_window()完了後に明示的にsyncを実行する
