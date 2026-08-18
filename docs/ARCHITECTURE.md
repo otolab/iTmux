@@ -446,7 +446,8 @@ class ProjectConfig:
 ### 適用方式
 
 - **方式**: `tmux set-environment -t <session> KEY VALUE`（セッションスコープ）
-- **タイミング**: `itmux open` のたびに適用（新規作成・既存 attach 双方）。`itmux add` 時も再適用
+- **タイミング**: `itmux open` のたびに適用（新規作成・既存 attach 双方）。`itmux add` 時はウィンドウ作成**前**に再適用
+- **新規セッション**: 一時ウィンドウ（`_itmux_bootstrap`）でセッションだけ作成 → `set-environment` → 初回ウィンドウ作成 → 一時ウィンドウ削除（シェル起動前に env を設定）
 - **未指定時**: `environments` 省略または空 dict → 何も変更しない（後方互換）
 - **新規ペイン**: セッション環境変数を継承するため、`echo $KEY` で即確認可能
 
