@@ -493,6 +493,46 @@ fi
 
 推奨フロー: システム再起動 → tmux-resurrect で復元 → `itmux open <project>` で iTerm2 ウィンドウを開く。
 
+## プロジェクト作業ディレクトリ（cwd）
+
+### 概要
+
+プロジェクトごとに `cwd` を `config.json` で定義し、`itmux open` / `itmux add` 時にシェルの作業ディレクトリとして適用します。
+
+```json
+{
+  "projects": {
+    "my-project": {
+      "name": "my-project",
+      "cwd": "/Users/me/Develop/my-project",
+      "tmux_windows": [...]
+    }
+  }
+}
+```
+
+### 適用方式
+
+- **新規ウィンドウ**（`open` の差分オープン、`add`）: `tmux new-session` / `new-window` の `-c` でシェル起動時に cwd を設定
+- **全ウィンドウ既存の `open`**: cwd は再適用しない（既存ペインは起動時 cwd のまま。environments と同様）
+- **未指定時**: `cwd` 省略または未設定 → 何も変更しない（後方互換）
+- **runtime 検証**: `open` / `add` 実行時にパスが存在しない場合はエラー（`config set cwd` 時の検証とは別レイヤ）
+
+### tmux-resurrect との整合
+
+tmux-resurrect はペインの作業ディレクトリも保存・復元します。競合時の正本は **config.json の `cwd`** です（**新規に開くウィンドウ / ペイン**に適用）。
+
+| タイミング | 動作 |
+|-----------|------|
+| resurrect 復元直後 | 保存時点のディレクトリが復元される |
+| `itmux open`（新規ウィンドウあり） | config の `cwd` で `-c` 起動 |
+| `itmux open`（全ウィンドウ既存） | cwd は変更しない |
+| `itmux add` | 新規ウィンドウのみ config の `cwd` で起動 |
+
+**既存ペインのシェル**は、environments と同様、起動時の cwd を維持します。`itmux open` で既存ペインの cwd を変更する機能はありません。
+
+推奨フロー: システム再起動 → tmux-resurrect で復元 → `itmux open <project>` で不足ウィンドウを開く（新規ウィンドウに config の cwd が適用される）。
+
 ## iTerm2 Python API統合
 
 ### 主要クラス

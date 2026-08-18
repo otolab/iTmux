@@ -2,7 +2,10 @@
 
 import os
 import subprocess
+from pathlib import Path
 from typing import Optional
+
+from .cwd import cwd_creation_args
 
 # 環境変数適用前の一時ウィンドウ名（ユーザー向けシェルは起動しない）
 BOOTSTRAP_WINDOW = "_itmux_bootstrap"
@@ -54,6 +57,7 @@ def prepare_session_environments(
     session_name: str,
     environments: dict[str, str],
     first_window_name: str,
+    cwd: Optional[Path] = None,
     env: Optional[dict[str, str]] = None,
 ) -> bool:
     """シェル起動前にセッション環境変数を整える.
@@ -65,6 +69,7 @@ def prepare_session_environments(
         session_name: tmuxセッション名
         environments: 適用する環境変数
         first_window_name: 初回ウィンドウ名
+        cwd: 初回ウィンドウの作業ディレクトリ
         env: subprocess に渡す環境変数
 
     Returns:
@@ -94,7 +99,15 @@ def prepare_session_environments(
         apply_session_environments(session_name, environments, env=run_env)
         if first_window_name != BOOTSTRAP_WINDOW:
             subprocess.run(
-                ["tmux", "new-window", "-t", session_name, "-n", first_window_name],
+                [
+                    "tmux",
+                    "new-window",
+                    "-t",
+                    session_name,
+                    "-n",
+                    first_window_name,
+                    *cwd_creation_args(cwd),
+                ],
                 capture_output=True,
                 check=False,
                 env=run_env,
@@ -120,6 +133,7 @@ def prepare_session_environments(
                 session_name,
                 "-n",
                 first_window_name,
+                *cwd_creation_args(cwd),
             ],
             capture_output=True,
             check=False,

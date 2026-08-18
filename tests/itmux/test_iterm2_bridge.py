@@ -116,3 +116,46 @@ class TestSetWindowSize:
 
         with pytest.raises(ITerm2Error, match="Window not found"):
             await bridge.set_window_size("nonexistent-id", window_size)
+
+
+class TestCreateTmuxWindow:
+    """_create_tmux_window() のテスト."""
+
+    @pytest.mark.asyncio
+    async def test_create_without_cwd_uses_api(
+        self, mock_iterm2_connection, mock_iterm2_app
+    ):
+        """cwd 未指定時は async_create_window を使う."""
+        tmux_conn = AsyncMock()
+        expected_window = AsyncMock()
+        tmux_conn.async_create_window = AsyncMock(return_value=expected_window)
+
+        bridge = ITerm2Bridge(mock_iterm2_connection, mock_iterm2_app)
+        result = await bridge._create_tmux_window(tmux_conn, "my-project")
+
+        assert result is expected_window
+        tmux_conn.async_create_window.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_create_with_cwd_uses_new_window_command(
+        self, mock_iterm2_connection, mock_iterm2_app, tmp_path
+    ):
+        """cwd 指定時は tmux new-window -c を使う."""
+        cwd = tmp_path.resolve()
+        tmux_conn = AsyncMock()
+        tmux_conn.async_send_command = AsyncMock()
+
+        expected_window = AsyncMock()
+        bridge = ITerm2Bridge(mock_iterm2_connection, mock_iterm2_app)
+        bridge.find_windows_by_tmux_session = AsyncMock(
+            return_value=[(expected_window, "1", "0")]
+        )
+
+        result = await bridge._create_tmux_window(tmux_conn, "my-project", cwd=cwd)
+
+        assert result is expected_window
+        tmux_conn.async_send_command.assert_awaited_once()
+        cmd = tmux_conn.async_send_command.await_args.args[0]
+        assert "new-window" in cmd
+        assert "-c" in cmd
+        assert str(cwd) in cmd
