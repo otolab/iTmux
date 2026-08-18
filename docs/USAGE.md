@@ -9,6 +9,7 @@ iTmuxは、iTerm2とtmuxを組み合わせて、プロジェクト単位でタ�
   - [tmux-resurrect統合](#tmux-resurrect統合)
 - [基本概念](#基本概念)
 - [基本的な使い方](#基本的な使い方)
+- [プロジェクト設定の変更（config）](#プロジェクト設定の変更config)
 - [プロジェクト定義](#プロジェクト定義)
 - [実践例](#実践例)
 - [トラブルシューティング](#トラブルシューティング)
@@ -365,6 +366,55 @@ itmux current
 - 現在のプロジェクトが明確（`itmux current` で確認）
 - 複数プロジェクトを開いていても、各session内で正しく動作
 
+## プロジェクト設定の変更（config）
+
+`config.json` を手編集せず、CLI からプロジェクト設定を閲覧・変更できます。**設定の変更は CLI を第一選択肢**としてください（iTerm2 接続は不要です）。
+
+### 設定の表示
+
+```bash
+itmux config show my-project
+```
+
+**出力例**:
+```
+Project: my-project
+Name: my-project
+Description: 開発用のメインプロジェクト
+Cwd: /Users/me/Develop/my-project
+Windows:
+  - editor
+  - server
+```
+
+### 作業ディレクトリ（cwd）の設定
+
+プロジェクトごとのデフォルト作業ディレクトリを設定します（`~` 展開・絶対パスへの正規化あり）。
+
+```bash
+# cwd を設定
+itmux config set cwd my-project ~/Develop/my-project
+
+# cwd を削除
+itmux config unset cwd my-project
+```
+
+**エラー時の挙動**:
+- 存在しないパス: `✗ Config Error: Directory does not exist: ...`
+- ファイルを指定した場合: `✗ Config Error: Not a directory: ...`
+- プロジェクトが存在しない: `✗ Error: Project '...' not found`
+
+存在しないディレクトリを先に config に書きたい場合は、手編集（下記）も利用できます。CLI 経由では、ディレクトリを作成してから `config set cwd` を実行してください。
+
+### 手編集（上級者向け）
+
+CLI で対応していない項目や、一括編集が必要な場合のみ `config.json` を直接編集します。
+
+```bash
+mkdir -p ~/.itmux
+nvim ~/.itmux/config.json
+```
+
 ## プロジェクト定義
 
 ### 命名規則
@@ -411,6 +461,13 @@ karte/systems-track     # /で階層を表現
 
 プロジェクトには説明文を追加できます（オプション）：
 
+```bash
+# 説明は itmux config show で確認可能（設定は現状 JSON 手編集）
+itmux config show my-project
+```
+
+JSON で直接編集する場合：
+
 ```json
 {
   "projects": {
@@ -451,6 +508,34 @@ Projects:
 - `lines`: 行数（縦幅）
 
 省略した場合、デフォルトサイズで開きます。
+
+### 作業ディレクトリ（cwd）
+
+プロジェクトごとにデフォルトの作業ディレクトリを設定できます。
+
+```bash
+itmux config set cwd my-project ~/Develop/my-project
+itmux config show my-project   # Cwd: /Users/me/Develop/my-project
+itmux config unset cwd my-project
+```
+
+JSON で直接編集する場合（`~` は読み込み時に展開されます）：
+
+```json
+{
+  "projects": {
+    "my-project": {
+      "name": "my-project",
+      "cwd": "/Users/me/Develop/my-project",
+      "tmux_windows": [
+        {"name": "editor"}
+      ]
+    }
+  }
+}
+```
+
+**注意**: 起動時の cwd 適用は将来のバージョンで対応予定です。現時点では設定の永続化のみです。
 
 ### プロジェクト環境変数（environments）
 
@@ -697,6 +782,8 @@ itmux close
 ### 設定ファイルの場所
 
 デフォルト: `~/.itmux/config.json`
+
+設定の変更は **`itmux config`** コマンドを優先してください（[プロジェクト設定の変更](#プロジェクト設定の変更config) を参照）。手編集が必要な場合：
 
 ```bash
 # ディレクトリ作成

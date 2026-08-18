@@ -148,6 +148,31 @@ class TestProjectConfig:
         project = ProjectConfig(name="my-project")
         assert project.description is None
 
+    def test_project_with_cwd(self, tmp_path):
+        """cwd 付きプロジェクト."""
+        project = ProjectConfig(name="my-project", cwd=tmp_path)
+        assert project.cwd == tmp_path.resolve()
+
+    def test_project_cwd_expands_tilde(self, monkeypatch, tmp_path):
+        """cwd の ~ 展開."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        project = ProjectConfig(name="my-project", cwd="~/work")
+        assert project.cwd == (tmp_path / "work").resolve()
+
+    def test_project_without_cwd_defaults_none(self):
+        """cwd 未指定は None."""
+        project = ProjectConfig(name="my-project")
+        assert project.cwd is None
+
+    def test_backward_compatible_json_without_cwd(self):
+        """cwd なしの既存 config が読み込める."""
+        data = {
+            "name": "legacy-project",
+            "tmux_windows": [{"name": "main"}],
+        }
+        project = ProjectConfig.model_validate(data)
+        assert project.cwd is None
+
     def test_project_with_environments(self):
         """環境変数付きプロジェクト."""
         project = ProjectConfig(

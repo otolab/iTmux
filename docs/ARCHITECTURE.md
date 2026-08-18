@@ -280,8 +280,8 @@ src/itmux/
 
 #### `cli.py`
 - Clickベースのコマンドラインインターフェース
-- `open`, `close`, `list` コマンドの定義
-- orchestratorへの処理委譲
+- `open`, `close`, `list`, `config` コマンドの定義
+- orchestratorへの処理委譲（`config` 系は `ConfigManager` のみで完結）
 
 #### `config.py`
 - `~/.itmux/config.json` の読み込み/保存
@@ -369,6 +369,22 @@ $ itmux add           # webappに追加
 $ itmux close         # webappを閉じる
 ```
 
+### プロジェクト設定（config）
+
+iTerm2 接続不要。`ConfigManager` のみで完結する。
+
+```bash
+# プロジェクト設定を表示
+itmux config show <project>
+
+# 作業ディレクトリ（cwd）を設定
+itmux config set cwd <project> <path>
+# → 存在しないパス・ファイルは ConfigError
+
+# 作業ディレクトリを削除
+itmux config unset cwd <project>
+```
+
 ## データ構造
 
 ### 設定ファイル（`~/.itmux/config.json`）
@@ -377,6 +393,9 @@ $ itmux close         # webappを閉じる
 {
   "projects": {
     "my-project": {
+      "name": "my-project",
+      "description": "optional description",
+      "cwd": "/Users/me/Develop/my-project",
       "tmux_windows": [
         {
           "name": "my_editor",
@@ -418,7 +437,9 @@ class SessionConfig:
 @dataclass
 class ProjectConfig:
     name: str
-    sessions: list[SessionConfig]
+    description: Optional[str] = None
+    cwd: Optional[Path] = None  # ~ 展開・絶対パス正規化。省略時は None
+    tmux_windows: list[WindowConfig]
     environments: dict[str, str]  # 省略時は {}
 ```
 

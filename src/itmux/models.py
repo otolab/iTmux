@@ -1,5 +1,6 @@
 """iTmux data models using Pydantic."""
 
+from pathlib import Path
 from typing import Optional, Any
 from pydantic import BaseModel, Field, field_validator, model_serializer
 
@@ -44,6 +45,7 @@ class ProjectConfig(BaseModel):
 
     name: str = Field(min_length=1, description="プロジェクト名")
     description: Optional[str] = Field(default=None, description="プロジェクトの説明")
+    cwd: Optional[Path] = Field(default=None, description="作業ディレクトリ")
     environments: dict[str, str] = Field(
         default_factory=dict, description="セッションスコープの環境変数"
     )
@@ -61,6 +63,15 @@ class ProjectConfig(BaseModel):
             if char in v:
                 raise ValueError(f'project name cannot contain "{char}"')
         return v
+
+    @field_validator("cwd", mode="before")
+    @classmethod
+    def normalize_cwd(cls, v: str | Path | None) -> Path | None:
+        """cwd を絶対パスに正規化（~ 展開、resolve）."""
+        if v is None:
+            return None
+        path = Path(v).expanduser()
+        return path.resolve(strict=False)
 
     @field_validator("environments")
     @classmethod

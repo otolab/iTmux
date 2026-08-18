@@ -232,6 +232,84 @@ class TestConfigManager:
         assert "my-project" in data["projects"]
         assert "tmux_windows" in data["projects"]["my-project"]
 
+    def test_set_project_cwd(self, temp_config_file, sample_config_data, tmp_path):
+        """cwd 設定."""
+        with open(temp_config_file, "w") as f:
+            json.dump(sample_config_data, f)
+
+        manager = ConfigManager(temp_config_file)
+        manager.load()
+        manager.set_project_cwd("test-project", tmp_path)
+
+        project = manager.get_project("test-project")
+        assert project.cwd == tmp_path.resolve()
+
+        with open(temp_config_file) as f:
+            data = json.load(f)
+        assert data["projects"]["test-project"]["cwd"] == str(tmp_path.resolve())
+
+    def test_set_project_cwd_nonexistent_raises_error(
+        self, temp_config_file, sample_config_data
+    ):
+        """存在しないディレクトリはエラー."""
+        with open(temp_config_file, "w") as f:
+            json.dump(sample_config_data, f)
+
+        manager = ConfigManager(temp_config_file)
+        manager.load()
+
+        with pytest.raises(ConfigError, match="Directory does not exist"):
+            manager.set_project_cwd("test-project", "/nonexistent/path")
+
+    def test_set_project_cwd_file_raises_error(
+        self, temp_config_file, sample_config_data, tmp_path
+    ):
+        """ファイルパスはエラー."""
+        file_path = tmp_path / "file.txt"
+        file_path.write_text("test")
+
+        with open(temp_config_file, "w") as f:
+            json.dump(sample_config_data, f)
+
+        manager = ConfigManager(temp_config_file)
+        manager.load()
+
+        with pytest.raises(ConfigError, match="Not a directory"):
+            manager.set_project_cwd("test-project", file_path)
+
+    def test_set_project_cwd_nonexistent_project_raises_error(self, temp_config_file):
+        """存在しないプロジェクトはエラー."""
+        manager = ConfigManager(temp_config_file)
+        manager.load()
+
+        with pytest.raises(ProjectNotFoundError):
+            manager.set_project_cwd("nonexistent", "/tmp")
+
+    def test_unset_project_cwd(self, temp_config_file, sample_config_data, tmp_path):
+        """cwd 削除."""
+        sample_config_data["projects"]["test-project"]["cwd"] = str(tmp_path)
+        with open(temp_config_file, "w") as f:
+            json.dump(sample_config_data, f)
+
+        manager = ConfigManager(temp_config_file)
+        manager.load()
+        manager.unset_project_cwd("test-project")
+
+        project = manager.get_project("test-project")
+        assert project.cwd is None
+
+        with open(temp_config_file) as f:
+            data = json.load(f)
+        assert "cwd" not in data["projects"]["test-project"]
+
+    def test_unset_project_cwd_nonexistent_raises_error(self, temp_config_file):
+        """存在しないプロジェクトの cwd 削除はエラー."""
+        manager = ConfigManager(temp_config_file)
+        manager.load()
+
+        with pytest.raises(ProjectNotFoundError):
+            manager.unset_project_cwd("nonexistent")
+
 
 class TestFunctionAPI:
     """関数APIのテスト."""

@@ -28,6 +28,56 @@ async def get_orchestrator() -> ProjectOrchestrator:
     return ProjectOrchestrator(config_manager, bridge)
 
 
+def get_config_manager() -> ConfigManager:
+    """ConfigManager インスタンスを作成（ITMUX_CONFIG_PATH 対応）."""
+    config_path_str = os.environ.get("ITMUX_CONFIG_PATH")
+    config_path = Path(config_path_str) if config_path_str else DEFAULT_CONFIG_PATH
+    return ConfigManager(config_path)
+
+
+def handle_config_errors(func):
+    """Config 系コマンドの共通エラーハンドリング."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ProjectNotFoundError as e:
+            click.echo(f"✗ Error: {e}", err=True)
+            sys.exit(1)
+        except ConfigError as e:
+            click.echo(f"✗ Config Error: {e}", err=True)
+            sys.exit(1)
+        except ValueError as e:
+            click.echo(f"✗ Error: {e}", err=True)
+            sys.exit(1)
+
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    return wrapper
+
+
+def format_project_config(project_name: str, project) -> str:
+    """プロジェクト設定を人間可読形式に整形."""
+    lines = [f"Project: {project_name}"]
+    lines.append(f"Name: {project.name}")
+
+    if project.description:
+        lines.append(f"Description: {project.description}")
+
+    if project.cwd:
+        lines.append(f"Cwd: {project.cwd}")
+    else:
+        lines.append("Cwd: (not set)")
+
+    if project.tmux_windows:
+        lines.append("Windows:")
+        for window in project.tmux_windows:
+            lines.append(f"  - {window.name}")
+    else:
+        lines.append("Windows: (none)")
+
+    return "\n".join(lines)
+
+
 def run_async_command(coro, success_message: str, handle_value_error: bool = False):
     """非同期コマンドを実行し、共通のエラーハンドリングを適用.
 
@@ -128,6 +178,56 @@ def add(project: str | None, window: str | None):
         await orchestrator.add(project, window)
 
     run_async_command(_add(), f"✓ Added window to project: {project or 'current'}", handle_value_error=True)
+
+
+@main.group()
+def config():
+    """Manage project configuration."""
+    pass
+
+
+@config.command("show")
+@click.argument("project")
+@handle_config_errors
+def config_show(project: str):
+    """Show project configuration."""
+    manager = get_config_manager()
+    project_config = manager.get_project(project)
+    click.echo(format_project_config(project, project_config))
+
+
+@config.group("set")
+def config_set():
+    """Set project configuration values."""
+    pass
+
+
+@config_set.command("cwd")
+@click.argument("project")
+@click.argument("path")
+@handle_config_errors
+def config_set_cwd(project: str, path: str):
+    """Set the working directory for a project."""
+    manager = get_config_manager()
+    manager.set_project_cwd(project, path)
+    project_config = manager.get_project(project)
+    click.echo(f"✓ Set cwd for project '{project}': {project_config.cwd}")
+
+
+@config.group("unset")
+def config_unset():
+    """Unset project configuration values."""
+    pass
+
+
+@config_unset.command("cwd")
+@click.argument("project")
+@handle_config_errors
+def config_unset_cwd(project: str):
+    """Remove the working directory setting for a project."""
+    manager = get_config_manager()
+    manager.unset_project_cwd(project)
+    click.echo(f"✓ Unset cwd for project '{project}'")
 
 
 @main.command()

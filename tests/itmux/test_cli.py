@@ -1,5 +1,6 @@
 """tests/itmux/test_cli.py - CLIコマンドのテスト."""
 
+import json
 import pytest
 from click.testing import CliRunner
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -273,3 +274,131 @@ class TestCurrent:
 
         assert result.exit_code == 1
         assert result.output == ""  # 何も出力しない
+
+
+class TestConfig:
+    """config サブコマンドのテスト."""
+
+    @pytest.fixture
+    def config_file(self, tmp_path):
+        """テスト用設定ファイル."""
+        config_path = tmp_path / "config.json"
+        data = {
+            "projects": {
+                "test-project": {
+                    "name": "test-project",
+                    "description": "Test project",
+                    "tmux_windows": [
+                        {"name": "editor"},
+                        {"name": "server"},
+                    ],
+                }
+            }
+        }
+        with open(config_path, "w") as f:
+            json.dump(data, f)
+        return config_path
+
+    def test_config_show(self, config_file):
+        """プロジェクト設定表示."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["config", "show", "test-project"],
+            env={"ITMUX_CONFIG_PATH": str(config_file)},
+        )
+
+        assert result.exit_code == 0
+        assert "Project: test-project" in result.output
+        assert "Name: test-project" in result.output
+        assert "Description: Test project" in result.output
+        assert "Cwd: (not set)" in result.output
+        assert "Windows:" in result.output
+        assert "editor" in result.output
+        assert "server" in result.output
+
+    def test_config_show_project_not_found(self, config_file):
+        """存在しないプロジェクト."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["config", "show", "nonexistent"],
+            env={"ITMUX_CONFIG_PATH": str(config_file)},
+        )
+
+        assert result.exit_code == 1
+        assert "✗ Error: Project 'nonexistent' not found" in result.output
+
+    def test_config_set_cwd(self, config_file, tmp_path):
+        """cwd 設定."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["config", "set", "cwd", "test-project", str(tmp_path)],
+            env={"ITMUX_CONFIG_PATH": str(config_file)},
+        )
+
+        assert result.exit_code == 0
+        assert f"✓ Set cwd for project 'test-project': {tmp_path.resolve()}" in result.output
+
+        with open(config_file) as f:
+            data = json.load(f)
+        assert data["projects"]["test-project"]["cwd"] == str(tmp_path.resolve())
+
+    def test_config_set_cwd_nonexistent_path(self, config_file):
+        """存在しないパスはエラー."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["config", "set", "cwd", "test-project", "/nonexistent/path"],
+            env={"ITMUX_CONFIG_PATH": str(config_file)},
+        )
+
+        assert result.exit_code == 1
+        assert "✗ Config Error: Directory does not exist" in result.output
+
+    def test_config_set_cwd_project_not_found(self, config_file, tmp_path):
+        """存在しないプロジェクト."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["config", "set", "cwd", "nonexistent", str(tmp_path)],
+            env={"ITMUX_CONFIG_PATH": str(config_file)},
+        )
+
+        assert result.exit_code == 1
+        assert "✗ Error: Project 'nonexistent' not found" in result.output
+
+    def test_config_unset_cwd(self, config_file, tmp_path):
+        """cwd 削除."""
+        with open(config_file) as f:
+            data = json.load(f)
+        data["projects"]["test-project"]["cwd"] = str(tmp_path)
+        with open(config_file, "w") as f:
+            json.dump(data, f)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["config", "unset", "cwd", "test-project"],
+            env={"ITMUX_CONFIG_PATH": str(config_file)},
+        )
+
+        assert result.exit_code == 0
+        assert "✓ Unset cwd for project 'test-project'" in result.output
+
+        with open(config_file) as f:
+            data = json.load(f)
+        assert "cwd" not in data["projects"]["test-project"]
+
+    def test_config_unset_cwd_project_not_found(self, config_file):
+        """存在しないプロジェクトの cwd 削除."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["config", "unset", "cwd", "nonexistent"],
+            env={"ITMUX_CONFIG_PATH": str(config_file)},
+        )
+
+        assert result.exit_code == 1
+        assert "✗ Error: Project 'nonexistent' not found" in result.output
