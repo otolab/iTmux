@@ -536,10 +536,9 @@ JSON で直接編集する場合（`~` は読み込み時に展開されます�
 ```
 
 **注意**:
-- `itmux open` / `itmux add` 時に、設定した cwd でシェルが起動します（新規ウィンドウ）
-- 全ウィンドウが既に開いている状態で `itmux open` した場合は、セッションのデフォルト cwd を更新し、全ペインを再起動して cwd を反映します
-- tmux-resurrect 復元後は `itmux open` で config の cwd が再適用されます
-- 既存ペインの再起動（`respawn-pane -k`）により、実行中のプロセス（vim 等）は終了します
+- `itmux open` / `itmux add` で**新規に開くウィンドウ**は、設定した cwd でシェルが起動します
+- 既に開いているペインの cwd は変更しません（environments と同様、起動時の状態を維持）
+- tmux-resurrect 復元後に新規ウィンドウを `itmux open` / `itmux add` で開いた場合は config の cwd が適用されます
 
 ### プロジェクト環境変数（environments）
 

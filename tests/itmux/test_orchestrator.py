@@ -265,10 +265,9 @@ class TestOpen:
         mock_apply_env.assert_called_once_with("test-project", {"FOO": "bar"})
 
     @pytest.mark.asyncio
-    @patch("itmux.orchestrator.apply_session_cwd")
     @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
     async def test_open_passes_cwd_to_bridge(
-        self, mock_is_tmux_running, mock_apply_cwd,
+        self, mock_is_tmux_running,
         mock_config_manager, mock_iterm2_bridge, mock_environ, tmp_path
     ):
         """open 時に cwd を bridge へ渡す."""
@@ -289,17 +288,14 @@ class TestOpen:
             {},
             cwd=cwd,
         )
-        mock_apply_cwd.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("itmux.orchestrator.apply_session_cwd")
-    @patch("itmux.orchestrator.apply_session_environments")
     @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')
-    async def test_open_reapplies_cwd_when_all_windows_open(
-        self, mock_is_tmux_running, mock_apply_env, mock_apply_cwd,
+    async def test_open_skips_cwd_when_all_windows_already_open(
+        self, mock_is_tmux_running,
         mock_config_manager, mock_iterm2_bridge, mock_environ, tmp_path
     ):
-        """全ウィンドウが既に開いていても cwd は再適用."""
+        """全ウィンドウが既に開いている場合は cwd を再適用しない."""
         mock_is_tmux_running.return_value = True
         cwd = tmp_path.resolve()
         mock_window = AsyncMock()
@@ -315,7 +311,6 @@ class TestOpen:
         await orchestrator.open("test-project")
 
         mock_iterm2_bridge.open_project_windows.assert_not_called()
-        mock_apply_cwd.assert_called_once_with("test-project", cwd)
 
     @pytest.mark.asyncio
     @patch('itmux.orchestrator.ProjectOrchestrator._is_tmux_running')

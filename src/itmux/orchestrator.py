@@ -10,7 +10,7 @@ from .iterm2 import ITerm2Bridge
 from .models import WindowConfig
 from .exceptions import ProjectNotFoundError
 from .tmux.environment import apply_session_environments
-from .tmux.cwd import apply_session_cwd, validate_cwd_path
+from .tmux.cwd import validate_cwd_path
 
 
 class ProjectOrchestrator:
@@ -343,12 +343,9 @@ class ProjectOrchestrator:
                 project.environments,
                 cwd=project.cwd,
             )
-        elif project.environments or project.cwd:
+        elif project.environments:
             # 全ウィンドウが既に開いている場合（resurrect 後の再適用など）
-            if project.environments:
-                apply_session_environments(project_name, project.environments)
-            if project.cwd:
-                apply_session_cwd(project_name, project.cwd)
+            apply_session_environments(project_name, project.environments)
 
         # 4. hookを設定（自動同期を有効化）
         # セッションスコープのhook（after-new-window等）は上書きされるため、

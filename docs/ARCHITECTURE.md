@@ -514,32 +514,24 @@ fi
 ### 適用方式
 
 - **新規ウィンドウ**（`open` の差分オープン、`add`）: `tmux new-session` / `new-window` の `-c` でシェル起動時に cwd を設定
-- **全ウィンドウ既存の `open`**: config 正本としてセッションのデフォルト作業ディレクトリを更新し、全ペインを `respawn-pane -k -c` で再起動
+- **全ウィンドウ既存の `open`**: cwd は再適用しない（既存ペインは起動時 cwd のまま。environments と同様）
 - **未指定時**: `cwd` 省略または未設定 → 何も変更しない（後方互換）
 - **runtime 検証**: `open` / `add` 実行時にパスが存在しない場合はエラー（`config set cwd` 時の検証とは別レイヤ）
 
 ### tmux-resurrect との整合
 
-tmux-resurrect はペインの作業ディレクトリも保存・復元します。競合時の正本は **config.json の `cwd`** です。
+tmux-resurrect はペインの作業ディレクトリも保存・復元します。競合時の正本は **config.json の `cwd`** です（**新規に開くウィンドウ / ペイン**に適用）。
 
 | タイミング | 動作 |
 |-----------|------|
 | resurrect 復元直後 | 保存時点のディレクトリが復元される |
-| `itmux open` 実行後 | config の `cwd` で再適用（新規ウィンドウは `-c`、既存ペインは `respawn-pane -k -c`） |
+| `itmux open`（新規ウィンドウあり） | config の `cwd` で `-c` 起動 |
+| `itmux open`（全ウィンドウ既存） | cwd は変更しない |
 | `itmux add` | 新規ウィンドウのみ config の `cwd` で起動 |
 
-**既存ペインのシェル**は、全ウィンドウ既存の `open` 時に次の2段階で再適用します。
+**既存ペインのシェル**は、environments と同様、起動時の cwd を維持します。`itmux open` で既存ペインの cwd を変更する機能はありません。
 
-1. `attach-session -c` — セッションのデフォルト作業ディレクトリを更新（`set-environment` と同様、**新規**ウィンドウ/ペイン向け）
-2. `respawn-pane -k -c` — 各ペインのプロセスを再起動して cwd を反映（**既存**ペイン向け）
-
-この方式の制約:
-
-- `respawn-pane -k` はペイン内の実行中プロセスを終了する（vim 等も含む）。未保存の作業は失われる可能性がある
-- `respawn-pane` の失敗は検知・報告しない（`open` は runtime エラーにならない）
-- tmux 3.6 時点で `default-path` セッションオプションは存在しない。セッション cwd の正本は `attach-session -c` / `new-session -c` / `new-window -c`
-
-推奨フロー: システム再起動 → tmux-resurrect で復元 → `itmux open <project>` で iTerm2 ウィンドウを開く（environments と同様）。
+推奨フロー: システム再起動 → tmux-resurrect で復元 → `itmux open <project>` で不足ウィンドウを開く（新規ウィンドウに config の cwd が適用される）。
 
 ## iTerm2 Python API統合
 
