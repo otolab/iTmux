@@ -233,7 +233,12 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
 2. sync --all の場合（全プロジェクトチェック）
    for project_name in config.list_projects():
      if not tmux has-session -t project_name:
-       config.delete_project(project_name)
+       if project has user metadata (cwd, environments, description, etc.):
+         # ユーザー設定を保持し tmux_windows を空にクリア
+         config.update_project(project_name, [])
+       else:
+         # ウィンドウ定義のみの一時プロジェクト → 削除（後方互換）
+         config.delete_project(project_name)
    return
 
 3. プロジェクト名決定（単一プロジェクト同期の場合）
@@ -241,8 +246,7 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
 
 4. tmuxセッション存在確認
    if not tmux has-session -t project_name:
-     # セッション終了 → プロジェクトを削除
-     config.delete_project(project_name)
+     # sync --all と同じ判定（ユーザー設定あり → tmux_windows クリア、なし → 削除）
      return
 
 5. tmuxからウィンドウリスト取得（iTerm2 API不使用）
@@ -671,10 +675,13 @@ set-hook -g session-closed "run-shell -b '{itmux_command} sync --all'"
 
 **sync --allの動作：**
 ```python
-# 全プロジェクトをチェックして、セッションが存在しないものを削除
+# 全プロジェクトをチェック。セッション不在時はユーザー設定の有無で分岐
 for project_name in config.list_projects():
     if not tmux_has_session(project_name):
-        config.delete_project(project_name)
+        if has_user_defined_metadata(project):
+            config.update_project(project_name, [])  # tmux_windows をクリア
+        else:
+            config.delete_project(project_name)
 ```
 
 ### 冪等性の確保
