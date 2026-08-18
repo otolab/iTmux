@@ -54,6 +54,9 @@ iTmux/
 itmux open <project>     # プロジェクトを開く/復元
 itmux close <project>    # プロジェクトをデタッチ
 itmux list              # プロジェクト一覧
+itmux config show <project>              # プロジェクト設定を表示
+itmux config set cwd <project> <path>    # 作業ディレクトリを設定
+itmux config unset cwd <project>         # 作業ディレクトリを削除
 ```
 
 ## 開発環境

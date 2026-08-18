@@ -11,6 +11,9 @@ iTmuxは、iTerm2のPython APIとtmuxのControl Modeを組み合わせて、プ�
 - `itmux open <project>`: プロジェクトのウィンドウセットを開く/復元
 - `itmux close <project>`: プロジェクトの状態を保存してデタッチ
 - `itmux list`: 管理中のプロジェクト一覧
+- `itmux config show <project>`: プロジェクト設定を表示
+- `itmux config set cwd <project> <path>`: 作業ディレクトリ（cwd）を設定
+- `itmux config unset cwd <project>`: 作業ディレクトリ（cwd）を削除
 
 ## 技術スタック
 
