@@ -1,7 +1,6 @@
 """iTerm2 Python API integration layer."""
 
 import asyncio
-import shlex
 from pathlib import Path
 from typing import Optional
 
@@ -9,6 +8,7 @@ import iterm2
 
 from ..models import WindowSize, WindowConfig
 from ..exceptions import ITerm2Error
+from ..tmux.cwd import cwd_respawn_pane_command
 from ..tmux.session_manager import SessionManager
 from ..tmux.hook_manager import HookManager
 from .window_manager import WindowManager
@@ -165,28 +165,34 @@ class ITerm2Bridge:
         except Exception:
             pass
 
+    async def _apply_window_cwd(
+        self,
+        tmux_conn: iterm2.TmuxConnection,
+        iterm_window: iterm2.Window,
+        cwd: Path,
+    ) -> None:
+        """ネイティブウィンドウ作成後に pane の作業ディレクトリを適用."""
+        tab = iterm_window.current_tab
+        tmux_window_id = tab.tmux_window_id
+        if not tmux_window_id:
+            raise ITerm2Error(
+                "Failed to apply cwd: tmux window id not available on new window"
+            )
+        await tmux_conn.async_send_command(
+            cwd_respawn_pane_command(str(tmux_window_id), cwd)
+        )
+
     async def _create_tmux_window(
         self,
         tmux_conn: iterm2.TmuxConnection,
         project_name: str,
         cwd: Optional[Path] = None,
     ) -> iterm2.Window:
-        """tmux ウィンドウを作成し、対応する iTerm2 ウィンドウを返す."""
+        """tmux ウィンドウを作成し、対応する iTerm2 ネイティブウィンドウを返す."""
+        iterm_window = await tmux_conn.async_create_window()
         if cwd is not None:
-            path = shlex.quote(str(cwd))
-            await tmux_conn.async_send_command(
-                f"new-window -t {project_name} -c {path}"
-            )
-            await asyncio.sleep(0.05)
-            matched_windows = await self.find_windows_by_tmux_session(tmux_conn)
-            if not matched_windows:
-                raise ITerm2Error(
-                    f"Failed to find iTerm2 window after tmux new-window for: {project_name}"
-                )
-            matched_windows.sort(key=lambda x: int(x[2]))
-            return matched_windows[-1][0]
-
-        return await tmux_conn.async_create_window()
+            await self._apply_window_cwd(tmux_conn, iterm_window, cwd)
+        return iterm_window
 
     async def add_window(
         self,

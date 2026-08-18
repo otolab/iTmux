@@ -198,13 +198,18 @@ set-environment -g PATH "/opt/homebrew/bin:$PATH"
 3. TmuxConnection取得
    tmux_conn = get_tmux_connection(project)
 
-4. 新しいtmuxウィンドウを作成
+4. 新しいtmuxウィンドウを作成（常に iTerm2 ネイティブウィンドウ）
    iterm_window = await tmux_conn.async_create_window()
-   await tmux_conn.async_send_command(f"rename-window {window-name}")
+   # cwd 指定時: respawn-pane -c で pane を再起動し作業ディレクトリを適用
+   # （new-window -c は同一 iTerm ウィンドウ内タブになるため使用しない）
+   if project.cwd:
+     await tmux_conn.async_send_command(
+       f"respawn-pane -t @{tmux_window_id} -c {project.cwd} -k"
+     )
+   await iterm_window.async_activate()  # view-mode 遷移防止
 
 5. iTerm2ウィンドウにタグ付け
-   await iterm_window.async_set_variable("user.projectID", project)
-   await iterm_window.async_set_variable("user.window_name", window-name)
+   await window_manager.tag_window(iterm_window, project, window-name)
 
 6. 完了（自動同期）
    → 新しいiTerm2ウィンドウが開く
@@ -513,10 +518,18 @@ fi
 
 ### 適用方式
 
-- **新規ウィンドウ**（`open` の差分オープン、`add`）: `tmux new-session` / `new-window` の `-c` でシェル起動時に cwd を設定
+cwd の適用経路は **初回セッション接続** と **追加ウィンドウ作成** で異なります。
+
+| 場面 | ウィンドウ作成 | cwd 適用 |
+|------|----------------|----------|
+| **初回セッション接続**（`open` でセッション新規作成） | `tmux new-session`（Control Mode attach 前） | `new-session -c` / `new-window -c` でシェル起動時に設定 |
+| **追加ウィンドウ**（`open` の差分オープン、`add`） | `async_create_window()`（iTerm2 ネイティブウィンドウ） | 作成後 `respawn-pane -t @<id> -c <path> -k` で pane を再起動 |
+
 - **全ウィンドウ既存の `open`**: cwd は再適用しない（既存ペインは起動時 cwd のまま。environments と同様）
 - **未指定時**: `cwd` 省略または未設定 → 何も変更しない（後方互換）
 - **runtime 検証**: `open` / `add` 実行時にパスが存在しない場合はエラー（`config set cwd` 時の検証とは別レイヤ）
+
+追加ウィンドウで `new-window -c` を使わない理由: Control Mode 下では同一 iTerm2 ウィンドウ内のタブとして開かれ、ネイティブウィンドウにならない（#15）。
 
 ### tmux-resurrect との整合
 
@@ -525,9 +538,10 @@ tmux-resurrect はペインの作業ディレクトリも保存・復元しま�
 | タイミング | 動作 |
 |-----------|------|
 | resurrect 復元直後 | 保存時点のディレクトリが復元される |
-| `itmux open`（新規ウィンドウあり） | config の `cwd` で `-c` 起動 |
+| `itmux open`（セッション新規作成） | `new-session -c` で初回ウィンドウの cwd を設定 |
+| `itmux open`（差分で新規ウィンドウあり） | `async_create_window()` + `respawn-pane -c` で cwd を適用 |
 | `itmux open`（全ウィンドウ既存） | cwd は変更しない |
-| `itmux add` | 新規ウィンドウのみ config の `cwd` で起動 |
+| `itmux add` | `async_create_window()` + `respawn-pane -c` で cwd を適用 |
 
 **既存ペインのシェル**は、environments と同様、起動時の cwd を維持します。`itmux open` で既存ペインの cwd を変更する機能はありません。
 
